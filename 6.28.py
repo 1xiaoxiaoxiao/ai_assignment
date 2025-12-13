@@ -34,7 +34,7 @@ def preprocess_text(text):
 # 2️⃣ Load Model & Vectorizer
 # -------------------------
 svm_model = load("intent_model_spacy.joblib")
-vectorizer = load("tfidf_vectorizer_SVM.joblib")
+vectorizer = load("tfidf_vectorizer_spacy.joblib")
 
 # -------------------------
 # 3️⃣ Load SpaCy NER
@@ -127,4 +127,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
