@@ -19,6 +19,7 @@ from nltk.tokenize import word_tokenize
 # -------------------------
 nltk.download('punkt')
 nltk.download('stopwords')
+nltk.download('punkt_tab')
 nltk.download('wordnet')
 stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
@@ -127,5 +128,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
