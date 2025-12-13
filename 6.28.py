@@ -1,19 +1,16 @@
-# =====================================================
-# Hotel Customer Support Chatbot
-# SVM (Intent Classification) + spaCy (NER)
-# Streamlit Final Version (Assignment Ready)
-# =====================================================
-
 import streamlit as st
 import re
 import spacy
 import time
 from joblib import load
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from rouge_score import rouge_scorer
 
 # =====================================================
 # 1. Configuration
 # =====================================================
-CONFIDENCE_MARGIN_THRESHOLD = 0.3
+CONFIDENCE_MARGIN_THRESHOLD = 0.3  # SVM low-confidence threshold
+SMOOTH_FN = SmoothingFunction().method1  # BLEU smoothing
 
 # =====================================================
 # 2. Load spaCy Model
@@ -25,7 +22,7 @@ def load_spacy():
 nlp = load_spacy()
 
 # =====================================================
-# 3. Load ML Model & Vectorizer
+# 3. Load SVM Model & TF-IDF Vectorizer
 # =====================================================
 @st.cache_resource
 def load_models():
@@ -42,11 +39,7 @@ def preprocess_text(text):
     text = text.lower()
     text = re.sub(r"[^a-zA-Z\s]", "", text)
     doc = nlp(text)
-    tokens = [
-        token.lemma_
-        for token in doc
-        if token.is_alpha and not token.is_stop
-    ]
+    tokens = [token.lemma_ for token in doc if token.is_alpha and not token.is_stop]
     return " ".join(tokens)
 
 # =====================================================
@@ -55,11 +48,9 @@ def preprocess_text(text):
 def extract_entities(user_input):
     doc = nlp(user_input)
     entities = {"PERSON": [], "DATE": [], "GPE": []}
-
     for ent in doc.ents:
         if ent.label_ in entities:
             entities[ent.label_].append(ent.text)
-
     return entities
 
 # =====================================================
@@ -67,25 +58,18 @@ def extract_entities(user_input):
 # =====================================================
 responses = {
     "greeting": "Hello! Welcome to our hotel service. How may I assist you today?",
-
     "book_hotel": (
         "Sure{PERSON}! I can help you book a room"
         "{LOCATION}{DATE}. Please let me know if you have any special requests."
     ),
-
     "cancel_booking": (
         "No problem{PERSON}. Your booking"
         "{LOCATION}{DATE} has been successfully canceled."
     ),
-
     "ask_room_price": "Our deluxe room costs RM180 per night.",
-
     "ask_wifi": "Yes, free Wi-Fi is available in all rooms and public areas.",
-
     "ask_checkin_time": "Check-in time starts from 2:00 PM.",
-
     "ask_checkout_time": "Check-out time is before 12:00 PM.",
-
     "unknown": "Sorry, I am not sure I understand. Could you please rephrase?"
 }
 
@@ -96,16 +80,10 @@ def fill_entities(template, entities):
     person = ", ".join(entities["PERSON"]) if entities["PERSON"] else ""
     date = ", ".join(entities["DATE"]) if entities["DATE"] else ""
     location = ", ".join(entities["GPE"]) if entities["GPE"] else ""
-
     person = f" {person}" if person else ""
     date = f" for {date}" if date else ""
     location = f" in {location}" if location else ""
-
-    return template.format(
-        PERSON=person,
-        DATE=date,
-        LOCATION=location
-    )
+    return template.format(PERSON=person, DATE=date, LOCATION=location)
 
 # =====================================================
 # 8. Intent Prediction (Rule + SVM)
@@ -114,30 +92,24 @@ def predict_intent(user_input):
     start_time = time.time()
     text = user_input.lower()
 
-    # ---------- Rule-based (High precision FAQ) ----------
+    # --- Rule-based for high-precision FAQ ---
     if any(k in text for k in ["wifi", "internet"]):
         return "ask_wifi", "Rule", time.time() - start_time
-
     if any(k in text for k in ["price", "cost", "rate"]):
         return "ask_room_price", "Rule", time.time() - start_time
-
     if "check in" in text or "check-in" in text:
         return "ask_checkin_time", "Rule", time.time() - start_time
-
     if "check out" in text or "checkout" in text:
         return "ask_checkout_time", "Rule", time.time() - start_time
 
-    # ---------- ML-based (SVM) ----------
+    # --- ML-based (SVM) ---
     cleaned = preprocess_text(user_input)
     vec = vectorizer.transform([cleaned])
     scores = svm_model.decision_function(vec)
-
     best_index = scores.argmax()
     intent = svm_model.classes_[best_index]
-
     sorted_scores = sorted(scores[0], reverse=True)
     margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else sorted_scores[0]
-
     elapsed = time.time() - start_time
 
     if margin < CONFIDENCE_MARGIN_THRESHOLD:
@@ -146,20 +118,23 @@ def predict_intent(user_input):
     return intent, f"SVM ({margin:.2f})", elapsed
 
 # =====================================================
-# 9. Generate Final Response
+# 9. Generate Final Response + BLEU/ROUGE
 # =====================================================
-def generate_response(user_input):
+def generate_response(user_input, reference=None):
     intent, confidence, response_time = predict_intent(user_input)
     entities = extract_entities(user_input)
-
     template = responses.get(intent, responses["unknown"])
+    reply = fill_entities(template, entities) if any(tag in template for tag in ["{PERSON}", "{DATE}", "{LOCATION}"]) else template
 
-    if any(tag in template for tag in ["{PERSON}", "{DATE}", "{LOCATION}"]):
-        reply = fill_entities(template, entities)
-    else:
-        reply = template
+    # --- BLEU Score ---
+    bleu_score = 0.0
+    rouge_scores = {}
+    if reference:
+        bleu_score = sentence_bleu([reference.split()], reply.split(), smoothing_function=SMOOTH_FN)
+        scorer = rouge_scorer.RougeScorer(['rouge1','rougeL'], use_stemmer=True)
+        rouge_scores = scorer.score(reference, reply)
 
-    return intent, reply, confidence, response_time
+    return intent, reply, confidence, response_time, bleu_score, rouge_scores
 
 # =====================================================
 # 10. Streamlit UI
@@ -169,9 +144,7 @@ st.title("Hotel Customer Support Chatbot")
 st.caption("SVM Intent Classification + spaCy NER")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": responses["greeting"]}
-    ]
+    st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -179,23 +152,27 @@ for msg in st.session_state.messages:
             st.caption(
                 f"Intent: {msg['intent']} | Confidence: {msg['confidence']} | Time: {msg['time']:.4f}s"
             )
+            if "bleu" in msg:
+                st.caption(f"BLEU: {msg['bleu']:.4f} | ROUGE-L: {msg['rougeL']:.4f}")
         st.markdown(msg["content"])
 
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-    st.session_state.messages.append(
-        {"role": "user", "content": user_input}
-    )
+    st.session_state.messages.append({"role": "user", "content": user_input})
 
-    intent, reply, confidence, response_time = generate_response(user_input)
+    # Optionally, you can provide a reference response here for testing BLEU/ROUGE
+    reference_response = None  # e.g., "I can assist you with booking a room."
+    intent, reply, confidence, response_time, bleu_score, rouge_scores = generate_response(user_input, reference=reference_response)
 
     st.session_state.messages.append({
         "role": "assistant",
         "content": reply,
         "intent": intent,
         "confidence": confidence,
-        "time": response_time
+        "time": response_time,
+        "bleu": bleu_score,
+        "rougeL": rouge_scores['rougeL'].fmeasure if rouge_scores else 0.0
     })
 
     st.rerun()
