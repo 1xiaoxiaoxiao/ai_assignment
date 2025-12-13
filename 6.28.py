@@ -1,15 +1,20 @@
+# =====================================================
+# Solaris Grand Hotel Chatbot
+# Streamlit Version with SVM + spaCy NER + Template Responses + Context
+# =====================================================
+
 import streamlit as st
 import spacy
 from joblib import load
 import re
 
 # -------------------------
-# 1. Load spaCy Model
+# 1. Load spaCy model
 # -------------------------
 nlp = spacy.load("en_core_web_sm")
 
 # -------------------------
-# 2. Load SVM Model & Vectorizer
+# 2. Load trained SVM model & vectorizer
 # -------------------------
 model = load("intent_model_spacy.joblib")
 vectorizer = load("tfidf_vectorizer_spacy.joblib")
@@ -31,7 +36,7 @@ responses = {
 }
 
 # -------------------------
-# 4. Preprocessing
+# 4. Helper functions
 # -------------------------
 def preprocess_text(text):
     text = text.lower()
@@ -49,9 +54,6 @@ def preprocess_text(text):
             tokens.append(token.lemma_)
     return " ".join(tokens)
 
-# -------------------------
-# 5. Predict Intent
-# -------------------------
 def predict_intent(user_input):
     cleaned = preprocess_text(user_input)
     vec = vectorizer.transform([cleaned])
@@ -76,12 +78,8 @@ def predict_intent(user_input):
         intent = "check_room_availability"
     elif "recommend" in text_lower or "nearby" in text_lower:
         intent = "check_nearby_attractions"
-
     return intent
 
-# -------------------------
-# 6. Extract Entities
-# -------------------------
 def extract_entities(user_input):
     doc = nlp(user_input)
     entities = {"PERSON": [], "DATE": [], "GPE": []}
@@ -90,45 +88,48 @@ def extract_entities(user_input):
             entities[ent.label_].append(ent.text)
     return entities
 
-# -------------------------
-# 7. Fill Entities
-# -------------------------
-def fill_entities(template, entities):
-    person = f" for {entities['PERSON'][0]}" if entities["PERSON"] else ""
-    date = f" on {entities['DATE'][0]}" if entities["DATE"] else ""
-    location = f" in {entities['GPE'][0]}" if entities["GPE"] else ""
+def fill_entities(template, context_entities):
+    person = f" for {context_entities['PERSON']}" if context_entities['PERSON'] else ""
+    date = f" on {context_entities['DATE']}" if context_entities['DATE'] else ""
+    location = f" in {context_entities['GPE']}" if context_entities['GPE'] else ""
     return template.format(PERSON=person, DATE=date, LOCATION=location)
 
 # -------------------------
-# 8. Chatbot Response
+# 5. Streamlit App
 # -------------------------
-def chatbot_response(user_input):
-    intent = predict_intent(user_input)
-    entities = extract_entities(user_input)
-    template = responses.get(intent, responses["unknown_intent"])
-    response = fill_entities(template, entities)
-    return response
+def main():
+    st.set_page_config(page_title="Solaris Grand Hotel Chatbot", layout="centered")
+    st.title("🏨 Solaris Grand Hotel Chatbot")
+    st.caption("Powered by SVM + spaCy NER + Template Responses")
 
-# -------------------------
-# 9. Streamlit App
-# -------------------------
-st.set_page_config(page_title="Solaris Grand Hotel Chatbot", layout="centered")
-st.title("🏨 Solaris Grand Hotel Chatbot")
-st.caption("Powered by SVM + spaCy NER + Template Responses")
+    # Initialize chat session
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        st.session_state.context_entities = {"PERSON": None, "DATE": None, "GPE": None}
+        # initial greeting
+        st.session_state.messages.append({"role": "assistant", "content": responses["greeting"]})
 
-# Initialize chat session
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
+    # Display chat history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-# Display chat messages
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    # Handle user input
+    if user_input := st.chat_input("Type your message here..."):
+        st.session_state.messages.append({"role": "user", "content": user_input})
 
-# Handle user input
-if user_input := st.chat_input("Type your message here..."):
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    reply = chatbot_response(user_input)
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+        # Extract entities and update context
+        new_entities = extract_entities(user_input)
+        for key in st.session_state.context_entities:
+            if new_entities[key]:
+                st.session_state.context_entities[key] = new_entities[key][0]
 
-# No need to call st.experimental_rerun()
+        # Predict intent
+        intent = predict_intent(user_input)
+        template = responses.get(intent, responses["unknown_intent"])
+        reply = fill_entities(template, st.session_state.context_entities)
+
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+
+if __name__ == "__main__":
+    main()
