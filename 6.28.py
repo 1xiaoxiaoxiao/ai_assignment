@@ -33,7 +33,7 @@ def preprocess_text(text):
 # -------------------------
 # 2️⃣ Load Model & Vectorizer
 # -------------------------
-svm_model = load("svm_intent_model.joblib")
+svm_model = load("intent_model_spacy.joblib")
 vectorizer = load("tfidf_vectorizer_SVM.joblib")
 
 # -------------------------
@@ -127,3 +127,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
