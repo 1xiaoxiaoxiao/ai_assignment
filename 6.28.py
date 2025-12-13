@@ -1,14 +1,140 @@
+# =====================================================
+# Solaris Grand Hotel Chatbot
+# Streamlit Version (SVM + spaCy + Template Responses)
+# =====================================================
+
+import streamlit as st
+import spacy
+from joblib import load
+import re
+import random
+
+# -------------------------
+# 1. Load spaCy Model
+# -------------------------
+nlp = spacy.load("en_core_web_sm")
+
+# -------------------------
+# 2. Load Trained SVM Model & Vectorizer
+# -------------------------
+model = load("intent_model_spacy.joblib")
+vectorizer = load("tfidf_vectorizer_spacy.joblib")
+
+# -------------------------
+# 3. Template Responses
+# -------------------------
+responses = {
+    "greeting": "Welcome to Solaris Grand Hotel! I'm your virtual assistant. How may I assist you today?",
+    "book_hotel": "Reserve a room{PERSON}{LOCATION}{DATE}. Visit www.solarisgrand.com or call +60-3-1234-5678.",
+    "cancel_hotel_reservation": "Your booking has been canceled{PERSON}{LOCATION}{DATE}. Contact reservations@solarisgrand.com.",
+    "check_hotel_prices": "Room rates vary by date and type{DATE}. Check www.solarisgrand.com for details.",
+    "check_room_availability": "You can check room availability{DATE} on our booking page.",
+    "check_nearby_attractions": "Nearby attractions include Petronas Towers, Pavilion KL, National Museum{LOCATION}.",
+    "bring_pets": "Pets are allowed under 10kg with a RM50 fee{PERSON}. Service animals are free.",
+    "add_night": "Extend your stay by contacting the Front Desk{PERSON}{DATE}{LOCATION}.",
+    "book_parking_space": "Parking can be reserved{DATE}{LOCATION} for RM25 per day.",
+    "unknown_intent": "I'm sorry, I didn't understand that. Could you please rephrase?"
+}
+
+# Mapping buttons for suggested questions
+PROMPT_MAPPING = {
+    "greeting": "Say Hello",
+    "book_hotel": "I want to book a room",
+    "cancel_hotel_reservation": "Cancel my booking",
+    "check_hotel_prices": "Room rates",
+    "check_room_availability": "Room availability",
+    "check_nearby_attractions": "Nearby attractions",
+    "bring_pets": "Pets policy",
+    "add_night": "Extend my stay",
+    "book_parking_space": "Parking info"
+}
+
+SUGGESTED_INTENTS = list(PROMPT_MAPPING.keys())
+
+# -------------------------
+# 4. Helper Functions
+# -------------------------
+def preprocess_text(text):
+    text = text.lower()
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    doc = nlp(text)
+    tokens = []
+    for token in doc:
+        if token.ent_type_ == "PERSON":
+            tokens.append("<PERSON>")
+        elif token.ent_type_ == "DATE":
+            tokens.append("<DATE>")
+        elif token.ent_type_ == "GPE":
+            tokens.append("<GPE>")
+        elif not token.is_stop and token.is_alpha:
+            tokens.append(token.lemma_)
+    return " ".join(tokens)
+
+def predict_intent(user_input):
+    cleaned = preprocess_text(user_input)
+    vec = vectorizer.transform([cleaned])
+    try:
+        intent = model.predict(vec)[0]
+    except:
+        intent = "unknown_intent"
+
+    # Simple rule-based fallback
+    text_lower = user_input.lower()
+    if "book" in text_lower or "reserve" in text_lower:
+        intent = "book_hotel"
+    elif "parking" in text_lower:
+        intent = "book_parking_space"
+    elif "pet" in text_lower or "dog" in text_lower or "cat" in text_lower:
+        intent = "bring_pets"
+    elif "cancel" in text_lower:
+        intent = "cancel_hotel_reservation"
+    elif "price" in text_lower or "cost" in text_lower:
+        intent = "check_hotel_prices"
+    elif "available" in text_lower or "availability" in text_lower:
+        intent = "check_room_availability"
+    elif "nearby" in text_lower or "recommend" in text_lower:
+        intent = "check_nearby_attractions"
+
+    return intent
+
+def extract_entities(user_input):
+    doc = nlp(user_input)
+    entities = {"PERSON": [], "DATE": [], "GPE": []}
+    for ent in doc.ents:
+        if ent.label_ in entities:
+            entities[ent.label_].append(ent.text)
+    return entities
+
+def fill_entities(template, entities):
+    person = ", ".join(entities["PERSON"]) if entities["PERSON"] else ""
+    date = ", ".join(entities["DATE"]) if entities["DATE"] else ""
+    location = ", ".join(entities["GPE"]) if entities["GPE"] else ""
+
+    person = f" {person}" if person else ""
+    date = f" for {date}" if date else ""
+    location = f" in {location}" if location else ""
+    
+    return template.format(PERSON=person, DATE=date, LOCATION=location)
+
+def chatbot_response(user_input):
+    intent = predict_intent(user_input)
+    entities = extract_entities(user_input)
+    template = responses.get(intent, responses["unknown_intent"])
+    response = fill_entities(template, entities)
+    return response, intent
+
 # -------------------------
 # 5. Streamlit App
 # -------------------------
 def main():
-    st.set_page_config(page_title="Hotel Chatbot", layout="centered")
+    st.set_page_config(page_title="Solaris Grand Hotel Chatbot", layout="centered")
     st.title("🏨 Solaris Grand Hotel Chatbot")
     st.caption("Powered by SVM + spaCy NER + Template Responses")
 
+    # Initialize chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
-        greeting = responses.get("greeting", "Hello! How may I help you?")
+        greeting = responses.get("greeting")
         st.session_state.messages.append({"role": "assistant", "content": greeting})
 
     # Display chat history
@@ -16,31 +142,23 @@ def main():
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Suggested buttons
-    if "suggested_intents" not in st.session_state:
-        st.session_state.suggested_intents = random.sample(list(PROMPT_MAPPING.keys()), min(4, len(PROMPT_MAPPING)))
-
-    cols = st.columns(len(st.session_state.suggested_intents))
-    for i, key in enumerate(st.session_state.suggested_intents):
-        prompt = PROMPT_MAPPING.get(key, key)
+    # Suggested questions buttons
+    cols = st.columns(len(SUGGESTED_INTENTS))
+    for i, key in enumerate(SUGGESTED_INTENTS):
+        prompt = PROMPT_MAPPING.get(key)
         with cols[i]:
-            if st.button(prompt, key=f"btn_{key}", use_container_width=True):
+            if st.button(prompt, key=f"btn_{key}"):
                 user_input = prompt
+                response, intent = chatbot_response(user_input)
                 st.session_state.messages.append({"role": "user", "content": user_input})
-                intent, response = chatbot_response(user_input)
                 st.session_state.messages.append({"role": "assistant", "content": response})
-                # Refresh suggestions
-                st.session_state.suggested_intents = random.sample(list(PROMPT_MAPPING.keys()), min(4, len(PROMPT_MAPPING)))
-                
-                # FIX 1: Use st.rerun() instead of experimental_rerun()
-                st.rerun()
 
-    # User input
-    user_input = st.chat_input("How can I help you?")
+    # User input via chat box
+    user_input = st.chat_input("Type your message here...")
     if user_input:
+        response, intent = chatbot_response(user_input)
         st.session_state.messages.append({"role": "user", "content": user_input})
-        intent, response = chatbot_response(user_input)
         st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # FIX 2: Use st.rerun() instead of experimental_rerun()
-        st.rerun()
+
+if __name__ == "__main__":
+    main()
