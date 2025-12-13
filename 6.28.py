@@ -1,13 +1,12 @@
 # =====================================================
 # Solaris Grand Hotel Chatbot
-# Streamlit Version (SVM + spaCy + Template Responses)
+# SVM + spaCy NER + Template Responses for Streamlit
 # =====================================================
 
 import streamlit as st
 import spacy
 from joblib import load
 import re
-import random
 
 # -------------------------
 # 1. Load spaCy Model
@@ -15,7 +14,7 @@ import random
 nlp = spacy.load("en_core_web_sm")
 
 # -------------------------
-# 2. Load Trained SVM Model & Vectorizer
+# 2. Load SVM Model & Vectorizer
 # -------------------------
 model = load("intent_model_spacy.joblib")
 vectorizer = load("tfidf_vectorizer_spacy.joblib")
@@ -36,23 +35,8 @@ responses = {
     "unknown_intent": "I'm sorry, I didn't understand that. Could you please rephrase?"
 }
 
-# Mapping buttons for suggested questions
-PROMPT_MAPPING = {
-    "greeting": "Say Hello",
-    "book_hotel": "I want to book a room",
-    "cancel_hotel_reservation": "Cancel my booking",
-    "check_hotel_prices": "Room rates",
-    "check_room_availability": "Room availability",
-    "check_nearby_attractions": "Nearby attractions",
-    "bring_pets": "Pets policy",
-    "add_night": "Extend my stay",
-    "book_parking_space": "Parking info"
-}
-
-SUGGESTED_INTENTS = list(PROMPT_MAPPING.keys())
-
 # -------------------------
-# 4. Helper Functions
+# 4. Preprocessing Function
 # -------------------------
 def preprocess_text(text):
     text = text.lower()
@@ -70,6 +54,9 @@ def preprocess_text(text):
             tokens.append(token.lemma_)
     return " ".join(tokens)
 
+# -------------------------
+# 5. Predict Intent
+# -------------------------
 def predict_intent(user_input):
     cleaned = preprocess_text(user_input)
     vec = vectorizer.transform([cleaned])
@@ -78,7 +65,7 @@ def predict_intent(user_input):
     except:
         intent = "unknown_intent"
 
-    # Simple rule-based fallback
+    # Rule-based fallback
     text_lower = user_input.lower()
     if "book" in text_lower or "reserve" in text_lower:
         intent = "book_hotel"
@@ -92,11 +79,14 @@ def predict_intent(user_input):
         intent = "check_hotel_prices"
     elif "available" in text_lower or "availability" in text_lower:
         intent = "check_room_availability"
-    elif "nearby" in text_lower or "recommend" in text_lower:
+    elif "recommend" in text_lower or "nearby" in text_lower:
         intent = "check_nearby_attractions"
 
     return intent
 
+# -------------------------
+# 6. Extract Entities
+# -------------------------
 def extract_entities(user_input):
     doc = nlp(user_input)
     entities = {"PERSON": [], "DATE": [], "GPE": []}
@@ -105,60 +95,41 @@ def extract_entities(user_input):
             entities[ent.label_].append(ent.text)
     return entities
 
+# -------------------------
+# 7. Fill Entities Naturally
+# -------------------------
 def fill_entities(template, entities):
-    person = ", ".join(entities["PERSON"]) if entities["PERSON"] else ""
-    date = ", ".join(entities["DATE"]) if entities["DATE"] else ""
-    location = ", ".join(entities["GPE"]) if entities["GPE"] else ""
-
-    person = f" {person}" if person else ""
-    date = f" for {date}" if date else ""
-    location = f" in {location}" if location else ""
-    
+    person = f" for {entities['PERSON'][0]}" if entities["PERSON"] else ""
+    date = f" on {entities['DATE'][0]}" if entities["DATE"] else ""
+    location = f" in {entities['GPE'][0]}" if entities["GPE"] else ""
     return template.format(PERSON=person, DATE=date, LOCATION=location)
 
+# -------------------------
+# 8. Generate Chatbot Response
+# -------------------------
 def chatbot_response(user_input):
     intent = predict_intent(user_input)
     entities = extract_entities(user_input)
     template = responses.get(intent, responses["unknown_intent"])
     response = fill_entities(template, entities)
-    return response, intent
+    return response
 
 # -------------------------
-# 5. Streamlit App
+# 9. Streamlit App
 # -------------------------
-def main():
-    st.set_page_config(page_title="Solaris Grand Hotel Chatbot", layout="centered")
-    st.title("🏨 Solaris Grand Hotel Chatbot")
-    st.caption("Powered by SVM + spaCy NER + Template Responses")
+st.set_page_config(page_title="Solaris Grand Hotel Chatbot", layout="centered")
+st.title("🏨 Solaris Grand Hotel Chatbot")
+st.caption("Powered by SVM + spaCy NER + Template Responses")
 
-    # Initialize chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-        greeting = responses.get("greeting")
-        st.session_state.messages.append({"role": "assistant", "content": greeting})
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
-    # Display chat history
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-    # Suggested questions buttons
-    cols = st.columns(len(SUGGESTED_INTENTS))
-    for i, key in enumerate(SUGGESTED_INTENTS):
-        prompt = PROMPT_MAPPING.get(key)
-        with cols[i]:
-            if st.button(prompt, key=f"btn_{key}"):
-                user_input = prompt
-                response, intent = chatbot_response(user_input)
-                st.session_state.messages.append({"role": "user", "content": user_input})
-                st.session_state.messages.append({"role": "assistant", "content": response})
-
-    # User input via chat box
-    user_input = st.chat_input("Type your message here...")
-    if user_input:
-        response, intent = chatbot_response(user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        st.session_state.messages.append({"role": "assistant", "content": response})
-
-if __name__ == "__main__":
-    main()
+if prompt := st.chat_input("Type your message here..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    reply = chatbot_response(prompt)
+    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.experimental_rerun()
