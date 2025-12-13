@@ -4,20 +4,14 @@ from joblib import load
 import re
 import random
 
-# -------------------------
 # 1. Load spaCy model
-# -------------------------
 nlp = spacy.load("en_core_web_sm")
 
-# -------------------------
 # 2. Load trained SVM model & vectorizer
-# -------------------------
 model = load("intent_model_spacy.joblib")
 vectorizer = load("tfidf_vectorizer_spacy.joblib")
 
-# -------------------------
 # 3. Responses
-# -------------------------
 responses = {
     "greeting": "Welcome to Solaris Grand Hotel! I'm your virtual assistant. How may I assist you today?",
     "book_hotel": "Reserve a room{PERSON}{LOCATION}{DATE}. Visit www.solarisgrand.com or call +60-3-1234-5678.",
@@ -31,9 +25,7 @@ responses = {
     "unknown_intent": "I'm sorry, I didn't understand that. Could you please rephrase?"
 }
 
-# -------------------------
 # 4. Helper functions
-# -------------------------
 def preprocess_text(text):
     text = text.lower()
     text = re.sub(r'[^a-zA-Z\s]', '', text)
@@ -102,9 +94,7 @@ def chatbot_response(user_input):
     template = responses.get(intent, responses["unknown_intent"])
     return fill_entities(template, entities), intent
 
-# -------------------------
 # 5. Streamlit App
-# -------------------------
 def main():
     st.set_page_config(page_title="Hotel Chatbot", layout="centered")
     st.title("🏨 Solaris Grand Hotel Chatbot")
@@ -112,21 +102,22 @@ def main():
 
     # Initialize chat state
     if "messages" not in st.session_state:
-        st.session_state.messages = []
-        greeting = responses.get("greeting")
-        st.session_state.messages.append({"role": "assistant", "content": greeting})
+        st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
-    # Display chat
+    # Display chat messages
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # User input
-    user_input = st.chat_input("Type your message here...")
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        reply, intent = chatbot_response(user_input)
-        st.session_state.messages.append({"role": "assistant", "content": reply})
+    # Input form to handle submission immediately
+    with st.form(key="chat_form", clear_on_submit=True):
+        user_input = st.text_input("Your message")
+        submit = st.form_submit_button("Send")
+        if submit and user_input:
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            reply, intent = chatbot_response(user_input)
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+            st.experimental_rerun()  # refresh to show the new message immediately
 
 if __name__ == "__main__":
     main()
