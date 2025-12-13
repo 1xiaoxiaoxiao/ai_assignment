@@ -1,17 +1,25 @@
 # =====================================================
 # Streamlit Hotel Chatbot (ML-based with spaCy)
+# Auto-download spaCy model if missing
 # =====================================================
 
 import streamlit as st
 import pandas as pd
 import re
-import spacy
 from joblib import load
+import spacy
+from spacy.cli import download
 
 # -------------------------
-# 1. Load spaCy Model
+# 1. Load spaCy Model safely
 # -------------------------
-nlp = spacy.load("en_core_web_sm")
+try:
+    # 尝试加载模型（禁用 parser 和 ner 提速）
+    nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
+except OSError:
+    # 如果模型不存在，则自动下载
+    download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
 
 # -------------------------
 # 2. Load trained model and vectorizer
@@ -66,7 +74,6 @@ st.write("Type your message below and press Enter or click Send. Type 'exit' to 
 if 'conversation' not in st.session_state:
     st.session_state.conversation = []
 
-# 用户输入
 user_input = st.text_input("You:", "")
 
 if st.button("Send") and user_input:
