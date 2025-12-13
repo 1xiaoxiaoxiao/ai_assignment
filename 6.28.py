@@ -23,7 +23,7 @@ download("en_core_web_sm")
 nlp = spacy.load("en_core_web_sm")
 
 # 测试用
-doc = nlp("Hello, my name is Zhiqiang.")
+doc = nlp("Hello, my name is 1.")
 for ent in doc.ents:
     print(ent.text, ent.label_)
 
@@ -98,4 +98,5 @@ for speaker, message in st.session_state.conversation:
         st.markdown(f"**You:** {message}")
     else:
         st.markdown(f"**Bot:** {message}")
+
 
