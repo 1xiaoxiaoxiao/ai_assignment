@@ -6,8 +6,6 @@ import streamlit as st
 import pandas as pd
 import re
 import spacy
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import LinearSVC
 from joblib import load
 import random
 import time
@@ -15,17 +13,21 @@ import time
 # -------------------------
 # 1. Configuration
 # -------------------------
-CONFIDENCE_THRESHOLD = 0.75  # For SVM, this can be used if we use decision_function
+CONFIDENCE_THRESHOLD = 0.75  # pseudo-confidence for SVM
 
 # -------------------------
 # 2. Load spaCy Model
 # -------------------------
-nlp = spacy.load("en_core_web_sm")
+# Make sure the model is installed:
+# pip install spacy
+# python -m spacy download en_core_web_sm
+nlp = spacy.load("en_core_web_sm")  # Load directly (cloud-friendly)
 
 # -------------------------
 # 3. Text Preprocessing
 # -------------------------
 def preprocess_text(text):
+    """Lowercase, remove punctuation, tokenize, remove stopwords, lemmatize using spaCy"""
     text = text.lower()
     text = re.sub(r'[^a-zA-Z\s]', '', text)
     doc = nlp(text)
@@ -42,7 +44,7 @@ def load_resources():
         vectorizer = load("tfidf_vectorizer_spacy.joblib")
         return svm_model, vectorizer
     except FileNotFoundError as e:
-        st.error(f"Missing model/vectorizer file: {e.filename}")
+        st.error(f"Missing model file: {e.filename}")
         return None, None
 
 svm_model, vectorizer = load_resources()
@@ -53,9 +55,9 @@ svm_model, vectorizer = load_resources()
 responses = {
     "ask_room_price": "Our deluxe room costs RM180 per night.",
     "ask_booking": "I can help you book a room. Please provide your date and number of guests.",
-    "ask_checkin_time": "Check-in time starts from 2:00 PM.",
-    "ask_checkout_time": "Check-out time is before 12:00 PM.",
-    "greeting": "Hello! How can I help you today?",
+    "ask_checkin_time": "Check-in starts at 2:00 PM.",
+    "ask_checkout_time": "Check-out is before 12:00 PM.",
+    "greeting": "Hello! How can I assist you today?",
     "goodbye": "Thank you for visiting. Have a nice day!"
 }
 
@@ -82,13 +84,10 @@ def predict_intent(user_input):
     cleaned = preprocess_text(user_input)
     vec = vectorizer.transform([cleaned])
 
-    # For SVM, we can use decision_function as pseudo-confidence
+    # SVM pseudo-confidence using decision_function
     decision_scores = svm_model.decision_function(vec)
     predicted_index = decision_scores.argmax() if len(decision_scores.shape) > 1 else 0
-    if len(decision_scores.shape) > 1:
-        confidence_score = max(decision_scores[0])
-    else:
-        confidence_score = abs(decision_scores[0])  # fallback for single-class
+    confidence_score = max(decision_scores[0]) if len(decision_scores.shape) > 1 else abs(decision_scores[0])
 
     intent_name = svm_model.classes_[predicted_index]
     response = responses.get(intent_name, "Sorry, I do not understand your request.")
@@ -104,10 +103,10 @@ def predict_intent(user_input):
 # -------------------------
 def main():
     st.set_page_config(page_title="Hotel AI Assistant (SVM + spaCy)", layout="centered")
-    st.title("🏨 Astra Imperium Hotel Chatbot (SVM + spaCy)")
+    st.title("🏨 Astra Imperium Hotel Chatbot")
     st.caption(f"Confidence Threshold: {CONFIDENCE_THRESHOLD}")
 
-    # --- Initialize Chat History ---
+    # Initialize chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
         greeting = responses.get("greeting", "Hello! How can I assist you?")
@@ -116,14 +115,14 @@ def main():
     if "pending_input" not in st.session_state:
         st.session_state.pending_input = None
 
-    # --- Display Chat History ---
+    # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if message["role"] == "assistant" and "intent" in message:
                 st.caption(f"Intent: **{message['intent']}** | Confidence: **{message['confidence']}** | Time: **{message['time']:.4f}s**")
             st.markdown(message["content"])
 
-    # --- Suggested Questions Buttons ---
+    # Suggested question buttons
     if "random_intents" not in st.session_state:
         st.session_state.random_intents = random.sample(SUGGESTED_INTENTS, min(4, len(SUGGESTED_INTENTS)))
 
@@ -139,7 +138,7 @@ def main():
                     del st.session_state.random_intents
                     st.rerun()
 
-    # --- Handle User Input ---
+    # Handle user input
     user_input = None
     if st.session_state.pending_input:
         user_input = st.session_state.pending_input
