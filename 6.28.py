@@ -1,8 +1,3 @@
-# =====================================================
-# Solaris Grand Hotel Chatbot
-# SVM + spaCy NER + Template Responses for Streamlit
-# =====================================================
-
 import streamlit as st
 import spacy
 from joblib import load
@@ -36,7 +31,7 @@ responses = {
 }
 
 # -------------------------
-# 4. Preprocessing Function
+# 4. Preprocessing
 # -------------------------
 def preprocess_text(text):
     text = text.lower()
@@ -96,7 +91,7 @@ def extract_entities(user_input):
     return entities
 
 # -------------------------
-# 7. Fill Entities Naturally
+# 7. Fill Entities
 # -------------------------
 def fill_entities(template, entities):
     person = f" for {entities['PERSON'][0]}" if entities["PERSON"] else ""
@@ -105,7 +100,7 @@ def fill_entities(template, entities):
     return template.format(PERSON=person, DATE=date, LOCATION=location)
 
 # -------------------------
-# 8. Generate Chatbot Response
+# 8. Chatbot Response
 # -------------------------
 def chatbot_response(user_input):
     intent = predict_intent(user_input)
@@ -121,15 +116,19 @@ st.set_page_config(page_title="Solaris Grand Hotel Chatbot", layout="centered")
 st.title("🏨 Solaris Grand Hotel Chatbot")
 st.caption("Powered by SVM + spaCy NER + Template Responses")
 
+# Initialize chat session
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# Display chat messages
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-if prompt := st.chat_input("Type your message here..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    reply = chatbot_response(prompt)
+# Handle user input
+if user_input := st.chat_input("Type your message here..."):
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    reply = chatbot_response(user_input)
     st.session_state.messages.append({"role": "assistant", "content": reply})
-    st.experimental_rerun()
+
+# No need to call st.experimental_rerun()
