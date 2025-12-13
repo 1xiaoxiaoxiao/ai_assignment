@@ -13,13 +13,20 @@ from spacy.cli import download
 # -------------------------
 # 1. Load spaCy Model safely
 # -------------------------
-try:
-    # 尝试加载模型（禁用 parser 和 ner 提速）
-    nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
-except OSError:
-    # 如果模型不存在，则自动下载
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
+import spacy
+from spacy.cli import download
+
+# 直接下载模型
+download("en_core_web_sm")
+
+# 下载完成后加载模型
+nlp = spacy.load("en_core_web_sm")
+
+# 测试用
+doc = nlp("Hello, my name is Zhiqiang.")
+for ent in doc.ents:
+    print(ent.text, ent.label_)
+
 
 # -------------------------
 # 2. Load trained model and vectorizer
@@ -91,3 +98,4 @@ for speaker, message in st.session_state.conversation:
         st.markdown(f"**You:** {message}")
     else:
         st.markdown(f"**Bot:** {message}")
+
