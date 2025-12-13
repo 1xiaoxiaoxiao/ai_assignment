@@ -1,128 +1,200 @@
-# ===============================================
-# Hotel FAQ Chatbot (Lightweight, SVM + spaCy-sm)
-# ===============================================
+# =====================================================
+# Hotel Chatbot (SVM + spaCy + Rule-based + Templates)
+# Streamlit Version
+# =====================================================
 
 import streamlit as st
-import pandas as pd
 import re
 import spacy
-import joblib
-import random
-import time
-from sklearn.svm import LinearSVC
-from sklearn.feature_extraction.text import TfidfVectorizer
+from joblib import load
 
 # -------------------------
-# 1. Configuration
+# 1. Page Config
 # -------------------------
-CONFIDENCE_THRESHOLD = 0.75
+st.set_page_config(
+    page_title="Hotel Customer Support Chatbot",
+    page_icon="🏨",
+    layout="centered"
+)
+
+st.title("Hotel Customer Support Chatbot")
+st.write("AI-powered hotel assistant using SVM + spaCy")
 
 # -------------------------
-# 2. Load spaCy small model (tokenization + lemmatization)
+# 2. Load spaCy Model
 # -------------------------
-nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
+@st.cache_resource
+def load_spacy():
+    return spacy.load("en_core_web_sm")
+
+nlp = load_spacy()
 
 # -------------------------
-# 3. Text preprocessing
+# 3. Load ML Model
+# -------------------------
+@st.cache_resource
+def load_models():
+    model = load("intent_model_spacy.joblib")
+    vectorizer = load("tfidf_vectorizer_spacy.joblib")
+    return model, vectorizer
+
+model, vectorizer = load_models()
+
+# -------------------------
+# 4. Text Preprocessing
 # -------------------------
 def preprocess_text(text):
-    """
-    Lowercase, remove punctuation, lemmatize, remove stopwords
-    """
     text = text.lower()
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    text = re.sub(r"[^a-zA-Z\s]", "", text)
     doc = nlp(text)
-    tokens = [token.lemma_ for token in doc if not token.is_stop and token.is_alpha]
+
+    tokens = []
+    for token in doc:
+        if token.ent_type_ == "PERSON":
+            tokens.append("<PERSON>")
+        elif token.ent_type_ == "DATE":
+            tokens.append("<DATE>")
+        elif token.ent_type_ == "GPE":
+            tokens.append("<GPE>")
+        elif not token.is_stop and token.is_alpha:
+            tokens.append(token.lemma_)
+
     return " ".join(tokens)
 
 # -------------------------
-# 4. Load model & vectorizer
+# 5. Intent Prediction
 # -------------------------
-@st.cache_resource
-def load_model_resources():
-    try:
-        svm_model = joblib.load("intent_model_spacy.joblib")
-        vectorizer = joblib.load("tfidf_vectorizer_spacy.joblib")
-        return svm_model, vectorizer
-    except FileNotFoundError as e:
-        st.error(f"Missing file: {e.filename}")
-        return None, None
+def predict_intent(user_input):
+    cleaned = preprocess_text(user_input)
+    vec = vectorizer.transform([cleaned])
+    intent = model.predict(vec)[0]
 
-svm_model, vectorizer = load_model_resources()
+    # Rule-based fallback
+    text_lower = user_input.lower()
+
+    if any(k in text_lower for k in ["book", "reserve", "room"]):
+        intent = "book_hotel"
+    elif "cancel" in text_lower:
+        intent = "cancel_booking"
+    elif any(k in text_lower for k in ["pet", "dog", "cat"]):
+        intent = "bring_pets"
+    elif any(k in text_lower for k in ["add night", "extend"]):
+        intent = "add_night"
+    elif "parking" in text_lower:
+        intent = "book_parking"
+
+    return intent
 
 # -------------------------
-# 5. Responses
+# 6. Entity Extraction
 # -------------------------
-RESPONSES = {
-    "ask_room_price": "Our deluxe room costs RM180 per night.",
-    "ask_booking": "I can help you book a room. Please provide your date and number of guests.",
+def extract_entities(user_input):
+    doc = nlp(user_input)
+    entities = {"PERSON": [], "DATE": [], "GPE": []}
+
+    for ent in doc.ents:
+        if ent.label_ in entities:
+            entities[ent.label_].append(ent.text)
+
+    return entities
+
+# -------------------------
+# 7. Response Templates
+# -------------------------
+responses = {
+    "greeting": "Hello! Welcome to our hotel service. How may I assist you today?",
+
+    "goodbye": "Thank you for choosing our hotel. Have a great day.",
+
+    "book_hotel": (
+        "Sure{PERSON}! I can help you with your hotel booking"
+        "{LOCATION}{DATE}. Please let me know if you have any special requests."
+    ),
+
+    "cancel_booking": (
+        "No problem{PERSON}. Your booking"
+        "{LOCATION}{DATE} has been successfully canceled."
+    ),
+
+    "bring_pets": (
+        "Yes{PERSON}, pets are allowed at our hotel"
+        "{LOCATION}{DATE}. Additional charges may apply."
+    ),
+
+    "add_night": (
+        "Certainly{PERSON}. Your stay has been extended by one night"
+        "{LOCATION}{DATE}."
+    ),
+
+    "book_parking": (
+        "Parking has been successfully reserved for you"
+        "{LOCATION}{DATE}{PERSON}."
+    ),
+
+    "ask_room_price": (
+        "Our deluxe room is priced at RM180 per night. "
+        "Breakfast and free Wi-Fi are included."
+    ),
+
+    "ask_booking": (
+        "I can assist you with a room booking. "
+        "Please provide your check-in date and number of guests."
+    ),
+
     "ask_checkin_time": "Check-in time starts from 2:00 PM.",
-    "ask_checkout_time": "Check-out time is before 12:00 PM.",
-    "greeting": "Hello! How can I help you today?",
-    "goodbye": "Thank you for visiting. Have a nice day!"
+
+    "ask_checkout_time": "Check-out time is before 12:00 PM."
 }
 
 # -------------------------
-# 6. Prediction function
+# 8. Fill Entity Placeholders
 # -------------------------
-def predict_intent(user_input):
-    if svm_model is None or vectorizer is None:
-        return "setup_error", "Model not loaded.", "N/A", 0.0
+def fill_entities(template, entities):
+    person = ", ".join(entities["PERSON"]) if entities["PERSON"] else ""
+    date = ", ".join(entities["DATE"]) if entities["DATE"] else ""
+    location = ", ".join(entities["GPE"]) if entities["GPE"] else ""
 
-    start_time = time.time()
-    cleaned = preprocess_text(user_input)
-    vec = vectorizer.transform([cleaned])
-    predicted_class = svm_model.predict(vec)[0]
+    person = f" {person}" if person else ""
+    date = f" for {date}" if date else ""
+    location = f" in {location}" if location else ""
 
-    # pseudo-confidence via decision_function
-    if hasattr(svm_model, "decision_function"):
-        scores = svm_model.decision_function(vec)
-        confidence_score = max(scores[0]) if len(scores.shape) > 1 else abs(scores[0])
+    return template.format(PERSON=person, DATE=date, LOCATION=location)
+
+# -------------------------
+# 9. Chatbot Logic
+# -------------------------
+def chatbot_response(user_input):
+    intent = predict_intent(user_input)
+    entities = extract_entities(user_input)
+    template = responses.get(intent, "Sorry, I do not understand your request.")
+
+    if any(tag in template for tag in ["{PERSON}", "{DATE}", "{LOCATION}"]):
+        return fill_entities(template, entities)
     else:
-        confidence_score = 1.0  # fallback
-
-    confidence_display = f"{confidence_score*100:.2f}%"
-    response_time = time.time() - start_time
-    response_text = RESPONSES.get(predicted_class, "Sorry, I do not understand your request.")
-
-    return predicted_class, response_text, confidence_display, response_time
+        return template
 
 # -------------------------
-# 7. Streamlit Chatbot
+# 10. Chat UI
 # -------------------------
-def main():
-    st.set_page_config(page_title="Hotel FAQ Chatbot", layout="centered")
-    st.title("🏨 Astra Imperium Hotel Chatbot")
-    st.caption(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
-    st.markdown("Ask me about room rates, booking, check-in/out times, and more!")
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-    # Initialize chat
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-        st.session_state.messages.append({"role": "assistant", "content": RESPONSES.get("greeting", "Hello!")})
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-    # Display chat history
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            if msg["role"] == "assistant" and "intent" in msg:
-                st.caption(f"Intent: **{msg['intent']}**, Confidence: **{msg['confidence']}**, Time: **{msg['time']:.4f}s**")
+user_input = st.chat_input("Type your message...")
 
-    # User input
-    user_input = st.chat_input("Type your message here...")
+if user_input:
+    st.session_state.messages.append(
+        {"role": "user", "content": user_input}
+    )
 
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.spinner("Analyzing..."):
-            intent, response, confidence, resp_time = predict_intent(user_input)
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response,
-                "intent": intent,
-                "confidence": confidence,
-                "time": resp_time
-            })
-            st.rerun()
+    reply = chatbot_response(user_input)
 
-if __name__ == "__main__":
-    main()
+    st.session_state.messages.append(
+        {"role": "assistant", "content": reply}
+    )
+
+    with st.chat_message("assistant"):
+        st.markdown(reply)
