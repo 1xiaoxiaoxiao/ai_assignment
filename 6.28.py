@@ -4,12 +4,11 @@ import spacy
 import time
 from joblib import load
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
-from rouge_score import rouge_scorer
 
 # =====================================================
 # 1. Configuration
 # =====================================================
-CONFIDENCE_MARGIN_THRESHOLD = 0.3  # SVM low-confidence threshold
+CONFIDENCE_MARGIN_THRESHOLD = 0.3
 SMOOTH_FN = SmoothingFunction().method1  # BLEU smoothing
 
 # =====================================================
@@ -92,7 +91,7 @@ def predict_intent(user_input):
     start_time = time.time()
     text = user_input.lower()
 
-    # --- Rule-based for high-precision FAQ ---
+    # --- Rule-based FAQ ---
     if any(k in text for k in ["wifi", "internet"]):
         return "ask_wifi", "Rule", time.time() - start_time
     if any(k in text for k in ["price", "cost", "rate"]):
@@ -118,7 +117,7 @@ def predict_intent(user_input):
     return intent, f"SVM ({margin:.2f})", elapsed
 
 # =====================================================
-# 9. Generate Final Response + BLEU/ROUGE
+# 9. Generate Response + BLEU
 # =====================================================
 def generate_response(user_input, reference=None):
     intent, confidence, response_time = predict_intent(user_input)
@@ -128,13 +127,10 @@ def generate_response(user_input, reference=None):
 
     # --- BLEU Score ---
     bleu_score = 0.0
-    rouge_scores = {}
     if reference:
         bleu_score = sentence_bleu([reference.split()], reply.split(), smoothing_function=SMOOTH_FN)
-        scorer = rouge_scorer.RougeScorer(['rouge1','rougeL'], use_stemmer=True)
-        rouge_scores = scorer.score(reference, reply)
 
-    return intent, reply, confidence, response_time, bleu_score, rouge_scores
+    return intent, reply, confidence, response_time, bleu_score
 
 # =====================================================
 # 10. Streamlit UI
@@ -153,7 +149,7 @@ for msg in st.session_state.messages:
                 f"Intent: {msg['intent']} | Confidence: {msg['confidence']} | Time: {msg['time']:.4f}s"
             )
             if "bleu" in msg:
-                st.caption(f"BLEU: {msg['bleu']:.4f} | ROUGE-L: {msg['rougeL']:.4f}")
+                st.caption(f"BLEU: {msg['bleu']:.4f}")
         st.markdown(msg["content"])
 
 user_input = st.chat_input("Type your message...")
@@ -161,9 +157,9 @@ user_input = st.chat_input("Type your message...")
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    # Optionally, you can provide a reference response here for testing BLEU/ROUGE
+    # 可选：提供参考回复用于BLEU计算
     reference_response = None  # e.g., "I can assist you with booking a room."
-    intent, reply, confidence, response_time, bleu_score, rouge_scores = generate_response(user_input, reference=reference_response)
+    intent, reply, confidence, response_time, bleu_score = generate_response(user_input, reference=reference_response)
 
     st.session_state.messages.append({
         "role": "assistant",
@@ -171,8 +167,7 @@ if user_input:
         "intent": intent,
         "confidence": confidence,
         "time": response_time,
-        "bleu": bleu_score,
-        "rougeL": rouge_scores['rougeL'].fmeasure if rouge_scores else 0.0
+        "bleu": bleu_score
     })
 
     st.rerun()
