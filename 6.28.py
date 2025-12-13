@@ -1,13 +1,8 @@
-# =====================================================
-# Solaris Grand Hotel Chatbot
-# Streamlit Version with SVM + spaCy NER + Template Responses + Suggested Questions
-# =====================================================
-
 import streamlit as st
 import spacy
 from joblib import load
-import random
 import re
+import random
 
 # -------------------------
 # 1. Load spaCy model
@@ -21,7 +16,7 @@ model = load("intent_model_spacy.joblib")
 vectorizer = load("tfidf_vectorizer_spacy.joblib")
 
 # -------------------------
-# 3. Template Responses
+# 3. Responses
 # -------------------------
 responses = {
     "greeting": "Welcome to Solaris Grand Hotel! I'm your virtual assistant. How may I assist you today?",
@@ -36,23 +31,8 @@ responses = {
     "unknown_intent": "I'm sorry, I didn't understand that. Could you please rephrase?"
 }
 
-# --- Suggested Questions / Buttons ---
-PROMPT_MAPPING = {
-    "book_hotel": "I want to book a room.",
-    "cancel_hotel_reservation": "I want to cancel my booking.",
-    "check_hotel_prices": "What are your room rates?",
-    "check_room_availability": "Do you have rooms available?",
-    "check_nearby_attractions": "What attractions are nearby?",
-    "bring_pets": "Are pets allowed?",
-    "add_night": "Can I extend my stay?",
-    "book_parking_space": "Do you have parking available?"
-}
-
-EXCLUDED_FROM_SUGGESTIONS = ["greeting", "unknown_intent"]
-SUGGESTED_INTENTS = [key for key in PROMPT_MAPPING.keys() if key not in EXCLUDED_FROM_SUGGESTIONS]
-
 # -------------------------
-# 4. Helper Functions
+# 4. Helper functions
 # -------------------------
 def preprocess_text(text):
     text = text.lower()
@@ -77,7 +57,7 @@ def predict_intent(user_input):
         intent = model.predict(vec)[0]
     except:
         intent = "unknown_intent"
-
+    
     # Rule-based fallback
     text_lower = user_input.lower()
     if "book" in text_lower or "reserve" in text_lower:
@@ -94,71 +74,59 @@ def predict_intent(user_input):
         intent = "check_room_availability"
     elif "recommend" in text_lower or "nearby" in text_lower:
         intent = "check_nearby_attractions"
+
     return intent
 
 def extract_entities(user_input):
     doc = nlp(user_input)
-    entities = {"PERSON": None, "DATE": None, "GPE": None}
+    entities = {"PERSON": [], "DATE": [], "GPE": []}
     for ent in doc.ents:
         if ent.label_ in entities:
-            entities[ent.label_] = ent.text
+            entities[ent.label_].append(ent.text)
     return entities
 
-def fill_entities(template, context_entities):
-    person = f" for {context_entities['PERSON']}" if context_entities['PERSON'] else ""
-    date = f" on {context_entities['DATE']}" if context_entities['DATE'] else ""
-    location = f" in {context_entities['GPE']}" if context_entities['GPE'] else ""
+def fill_entities(template, entities):
+    person = ", ".join(entities["PERSON"]) if entities["PERSON"] else ""
+    date = ", ".join(entities["DATE"]) if entities["DATE"] else ""
+    location = ", ".join(entities["GPE"]) if entities["GPE"] else ""
+
+    person = f" {person}" if person else ""
+    date = f" for {date}" if date else ""
+    location = f" in {location}" if location else ""
+    
     return template.format(PERSON=person, DATE=date, LOCATION=location)
+
+def chatbot_response(user_input):
+    intent = predict_intent(user_input)
+    entities = extract_entities(user_input)
+    template = responses.get(intent, responses["unknown_intent"])
+    return fill_entities(template, entities), intent
 
 # -------------------------
 # 5. Streamlit App
 # -------------------------
 def main():
-    st.set_page_config(page_title="Solaris Grand Hotel Chatbot", layout="centered")
+    st.set_page_config(page_title="Hotel Chatbot", layout="centered")
     st.title("🏨 Solaris Grand Hotel Chatbot")
-    st.caption("Powered by SVM + spaCy NER + Template Responses")
-    
-    # Initialize chat history & context
-    if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
-        st.session_state.context_entities = {"PERSON": None, "DATE": None, "GPE": None}
-        st.session_state.random_intents = random.sample(SUGGESTED_INTENTS, min(4, len(SUGGESTED_INTENTS)))
-        st.session_state.pending_input = None
+    st.markdown("Ask about bookings, facilities, policies, or nearby attractions!")
 
-    # Display chat history
+    # Initialize chat state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        greeting = responses.get("greeting")
+        st.session_state.messages.append({"role": "assistant", "content": greeting})
+
+    # Display chat
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Suggested buttons
-    if st.session_state.random_intents:
-        st.markdown("**Suggested Questions:**")
-        cols = st.columns(len(st.session_state.random_intents))
-        for i, intent_key in enumerate(st.session_state.random_intents):
-            with cols[i]:
-                if st.button(PROMPT_MAPPING[intent_key], key=f"btn_{intent_key}", use_container_width=True):
-                    st.session_state.pending_input = PROMPT_MAPPING[intent_key]
-                    st.session_state.random_intents = random.sample(SUGGESTED_INTENTS, min(4, len(SUGGESTED_INTENTS)))
-
-    # Handle user input
-    if st.session_state.pending_input:
-        user_input = st.session_state.pending_input
-        st.session_state.pending_input = None
-    else:
-        user_input = st.chat_input("Type your message here...")
-
+    # User input
+    user_input = st.chat_input("Type your message here...")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
-        # Update context entities
-        new_entities = extract_entities(user_input)
-        for key in st.session_state.context_entities:
-            if new_entities[key]:
-                st.session_state.context_entities[key] = new_entities[key]
-        # Predict intent and respond
-        intent = predict_intent(user_input)
-        reply = fill_entities(responses.get(intent, responses["unknown_intent"]), st.session_state.context_entities)
+        reply, intent = chatbot_response(user_input)
         st.session_state.messages.append({"role": "assistant", "content": reply})
-        st.experimental_rerun()  # refresh the chat interface
 
 if __name__ == "__main__":
     main()
