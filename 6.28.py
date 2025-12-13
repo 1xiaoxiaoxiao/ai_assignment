@@ -2,7 +2,6 @@ import streamlit as st
 import spacy
 from joblib import load
 import re
-import random
 
 # 1. Load spaCy model
 nlp = spacy.load("en_core_web_sm")
@@ -92,7 +91,7 @@ def chatbot_response(user_input):
     intent = predict_intent(user_input)
     entities = extract_entities(user_input)
     template = responses.get(intent, responses["unknown_intent"])
-    return fill_entities(template, entities), intent
+    return fill_entities(template, entities)
 
 # 5. Streamlit App
 def main():
@@ -100,24 +99,27 @@ def main():
     st.title("🏨 Solaris Grand Hotel Chatbot")
     st.markdown("Ask about bookings, facilities, policies, or nearby attractions!")
 
-    # Initialize chat state
+    # Initialize chat history
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
-    # Display chat messages
+    # Display messages
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Input form to handle submission immediately
+    # Input form for user
     with st.form(key="chat_form", clear_on_submit=True):
         user_input = st.text_input("Your message")
         submit = st.form_submit_button("Send")
         if submit and user_input:
+            # Append user message
             st.session_state.messages.append({"role": "user", "content": user_input})
-            reply, intent = chatbot_response(user_input)
+            # Generate bot response
+            reply = chatbot_response(user_input)
             st.session_state.messages.append({"role": "assistant", "content": reply})
-            st.experimental_rerun()  # refresh to show the new message immediately
+            # Refresh to show immediately
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
