@@ -185,7 +185,19 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    reply = generate_response(user_input)
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.session_state.messages.append(
+        {"role": "user", "content": user_input}
+    )
+
+    reply, intent, confidence = generate_response(user_input)
+
+    intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence:.2f}</sub>"
+    display_reply = f"{intent_info}\n\n{reply}"
+
+    st.session_state.messages.append(
+        {"role": "assistant", "content": display_reply}
+    )
+
     st.rerun()
+
+
