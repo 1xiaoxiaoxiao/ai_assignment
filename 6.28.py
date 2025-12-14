@@ -11,6 +11,7 @@ from collections import defaultdict
 import joblib
 import time
 import numpy as np
+import scipy.special
 
 # -----------------------------
 # 1️⃣ Load models & spaCy
@@ -84,31 +85,28 @@ def extract_entities(text):
 # -----------------------------
 # 5️⃣ Predict intent & confidence
 # -----------------------------
+  
+
 def predict_intent(text):
     start_time = time.time()
     vec = vectorizer.transform([preprocess_text(text)])
     scores = clf.decision_function(vec)
     best_index = np.argmax(scores)
     intent = clf.classes_[best_index]
-    
-    # 1️⃣ 用 margin 判断 High / Medium / Low
+
+    # Sigmoid 转换 margin 为百分比
     if len(scores[0]) > 1:
         sorted_scores = np.sort(scores[0])[::-1]
         margin = sorted_scores[0] - sorted_scores[1]
     else:
         margin = scores[0][0]
-    
-    # 2️⃣ 转换为 High / Medium / Low
-    if margin > 1.0:
-        confidence = "High"
-    elif margin > 0.5:
-        confidence = "Medium"
-    else:
-        confidence = "Low"
-    
+
+    confidence = scipy.special.expit(margin) * 100  # 转成 0~100%
+
     response = responses.get(intent, responses["unknown_intent"])
     elapsed_time = time.time() - start_time
     return intent, response, confidence, elapsed_time
+
 
 
 # -----------------------------
@@ -151,5 +149,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
