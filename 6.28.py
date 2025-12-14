@@ -15,7 +15,7 @@ import time
 # -------------------------
 # 1. Configuration
 # -------------------------
-CONFIDENCE_THRESHOLD = 0.75  # Threshold for SVM pseudo-confidence
+CONFIDENCE_THRESHOLD = 0.75  # For SVM, this can be used if we use decision_function
 
 # -------------------------
 # 2. Load spaCy Model
@@ -26,10 +26,10 @@ nlp = spacy.load("en_core_web_sm")
 # 3. Text Preprocessing
 # -------------------------
 def preprocess_text(text):
-    text = text.lower()  # Convert text to lowercase
-    text = re.sub(r'[^a-zA-Z\s]', '', text)  # Remove non-alphabetic characters
+    text = text.lower()
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
     doc = nlp(text)
-    tokens = [token.lemma_ for token in doc if not token.is_stop and token.is_alpha]  # Lemmatize and remove stop words
+    tokens = [token.lemma_ for token in doc if not token.is_stop and token.is_alpha]
     return ' '.join(tokens)
 
 # -------------------------
@@ -48,7 +48,7 @@ def load_resources():
 svm_model, vectorizer = load_resources()
 
 # -------------------------
-# 5. Responses Dictionary
+# 5. Responses
 # -------------------------
 responses = {
     "ask_room_price": "Our deluxe room costs RM180 per night.",
@@ -82,13 +82,13 @@ def predict_intent(user_input):
     cleaned = preprocess_text(user_input)
     vec = vectorizer.transform([cleaned])
 
-    # Use decision_function for pseudo-confidence in SVM
+    # For SVM, we can use decision_function as pseudo-confidence
     decision_scores = svm_model.decision_function(vec)
     predicted_index = decision_scores.argmax() if len(decision_scores.shape) > 1 else 0
     if len(decision_scores.shape) > 1:
         confidence_score = max(decision_scores[0])
     else:
-        confidence_score = abs(decision_scores[0])  # Fallback for single-class scenario
+        confidence_score = abs(decision_scores[0])  # fallback for single-class
 
     intent_name = svm_model.classes_[predicted_index]
     response = responses.get(intent_name, "Sorry, I do not understand your request.")
@@ -100,7 +100,7 @@ def predict_intent(user_input):
     return intent_name, response, confidence_display, response_time
 
 # -------------------------
-# 8. Streamlit Chatbot UI
+# 8. Streamlit Chatbot
 # -------------------------
 def main():
     st.set_page_config(page_title="Hotel AI Assistant (SVM + spaCy)", layout="centered")
@@ -164,4 +164,4 @@ def main():
             st.rerun()
 
 if __name__ == "__main__":
-    main()
+    main()注释用英文
