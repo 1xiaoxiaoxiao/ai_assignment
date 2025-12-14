@@ -176,22 +176,16 @@ st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
-# show history message
+# Show history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"], unsafe_allow_html=True)
 
-# user input
+# User input
 user_input = st.chat_input("Type your message...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
-    intent, reply, confidence, response_time = generate_response(user_input)
-
-    intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence}</sub>"
-    display_reply = f"{intent_info}\n\n{reply}"
-
-    st.session_state.messages.append({"role": "assistant", "content": display_reply})
+    reply = generate_response(user_input)
+    st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
-
-
