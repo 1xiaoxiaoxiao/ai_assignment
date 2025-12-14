@@ -170,60 +170,27 @@ def generate_response(user_input):
 # 11. Streamlit UI
 # =====================================================
 st.set_page_config(page_title="Hotel AI Chatbot", layout="centered")
-
 st.title("Hotel Customer Support Chatbot")
 st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
 
-# -------------------------
-# Initialize chat history
-# -------------------------
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": responses["greeting"]}
-    ]
+    st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
-# -------------------------
-# Display chat history
-# -------------------------
+# show history message
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"], unsafe_allow_html=True)
 
-# -------------------------
-# User input
-# -------------------------
+# user input
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-    # store user message
-    st.session_state.messages.append(
-        {"role": "user", "content": user_input}
-    )
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    intent, reply, confidence, response_time = generate_response(user_input)
 
-    # generate chatbot response
-    reply, intent, confidence = generate_response(user_input)
-
-    # convert confidence to percentage (margin-based, not probability)
-    confidence_pct = min(
-        confidence / CONFIDENCE_MARGIN_THRESHOLD, 1.0
-    ) * 100
-
-    # intent + confidence display (small text above reply)
-    intent_info = (
-        f"<sub>"
-        f"Predicted Intent: {intent} | "
-        f"Confidence: {confidence_pct:.0f}%"
-        f"</sub>"
-    )
-
+    intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence}</sub>"
     display_reply = f"{intent_info}\n\n{reply}"
 
-    # store assistant message
-    st.session_state.messages.append(
-        {"role": "assistant", "content": display_reply}
-    )
-
+    st.session_state.messages.append({"role": "assistant", "content": display_reply})
     st.rerun()
-
-
 
