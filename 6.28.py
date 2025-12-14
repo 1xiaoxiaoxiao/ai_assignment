@@ -124,30 +124,66 @@ def predict_intent(user_input):
 # 10. Generate Response (Multi-turn)
 # =====================================================
 def generate_response(user_input):
-    ...
+    start_time = time.time()
+
+    if "pending_intent" not in st.session_state:
+        st.session_state.pending_intent = None
+    if "collected_info" not in st.session_state:
+        st.session_state.collected_info = {}
+
     intent, confidence = predict_intent(user_input)
     entities = extract_entities(user_input)
 
+    # ---------- Multi-turn ----------
     if st.session_state.pending_intent:
-        ...
+        current_intent = st.session_state.pending_intent
+
+        for slot in intent_slots.get(current_intent, []):
+            if entities.get(slot):
+                st.session_state.collected_info[slot] = entities[slot][0]
+
+        missing = [
+            slot for slot in intent_slots[current_intent]
+            if slot not in st.session_state.collected_info
+        ]
+
         if missing:
             reply = f"Please provide the following information: {', '.join(missing)}."
-            return reply, intent, confidence
+            response_time = time.time() - start_time
+            return intent, reply, confidence, response_time
 
-        reply = f"I have recorded your information: {st.session_state['collected_info']}..."
+        reply = (
+            f"I have recorded your information: "
+            f"{st.session_state['collected_info']}. "
+            f"Please proceed to the website or Front Desk to complete the operation."
+        )
         st.session_state.pending_intent = None
         st.session_state.collected_info = {}
-        return reply, intent, confidence
+        response_time = time.time() - start_time
+        return intent, reply, confidence, response_time
 
+    # ---------- New operational intent ----------
     if intent in OPERATIONAL_INTENTS:
-        ...
+        missing_entities = [
+            slot for slot in intent_slots[intent]
+            if not entities.get(slot)
+        ]
         if missing_entities:
-            ...
-            return reply, intent, confidence
+            st.session_state.pending_intent = intent
+            for slot in intent_slots[intent]:
+                if entities.get(slot):
+                    st.session_state.collected_info[slot] = entities[slot][0]
 
-    template = responses.get(intent, responses.get("unknown_intent"))
+            reply = f"Sure! Please provide: {', '.join(missing_entities)}."
+            response_time = time.time() - start_time
+            return intent, reply, confidence, response_time
+
+    # ---------- Single-turn ----------
+    template = responses.get(intent, responses["unknown_intent"])
     reply = fill_entities(template, entities)
-    return reply, intent, confidence
+    response_time = time.time() - start_time
+    return intent, reply, confidence, response_time
+
 
 
 # =====================================================
@@ -177,5 +213,6 @@ if user_input:
 
     st.session_state.messages.append({"role": "assistant", "content": display_reply})
     st.rerun()
+
 
 
