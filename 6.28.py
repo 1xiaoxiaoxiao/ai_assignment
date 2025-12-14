@@ -1,6 +1,6 @@
 # =====================================================
 # Hotel Customer Support Chatbot (Streamlit + SVM + spaCy)
-# Multi-turn slot filling version
+# Multi-turn Slot Filling + Evaluation
 # =====================================================
 
 import streamlit as st
@@ -8,6 +8,8 @@ import re
 import spacy
 import time
 from joblib import load
+from sklearn.metrics import accuracy_score
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
 # =====================================================
 # 1. Configuration
@@ -178,7 +180,43 @@ def generate_response(user_input):
     return intent, reply, confidence, response_time
 
 # =====================================================
-# 11. Streamlit UI
+# 11. Evaluation Utilities
+# =====================================================
+if "evaluation_log" not in st.session_state:
+    st.session_state.evaluation_log = []
+
+def evaluate_intent(test_dataset):
+    y_true = []
+    y_pred = []
+    for item in test_dataset:
+        intent, _, _ = predict_intent(item["input"])
+        y_true.append(item["true_intent"])
+        y_pred.append(intent)
+    acc = accuracy_score(y_true, y_pred)
+    return acc, y_true, y_pred
+
+def evaluate_response(test_dataset):
+    bleu_scores = []
+    smoothie = SmoothingFunction().method4
+    for item in test_dataset:
+        _, reply, _, _ = generate_response(item["input"])
+        reference = [item["true_response"].split()]
+        candidate = reply.split()
+        score = sentence_bleu(reference, candidate, smoothing_function=smoothie)
+        bleu_scores.append(score)
+    avg_bleu = sum(bleu_scores)/len(bleu_scores) if bleu_scores else 0
+    return avg_bleu, bleu_scores
+
+def collect_feedback(user_input, bot_reply):
+    rating = st.slider(f"Rate the response for: '{bot_reply}'", 1, 5, 3, key=f"fb_{len(st.session_state.evaluation_log)}")
+    st.session_state.evaluation_log.append({
+        "input": user_input,
+        "response": bot_reply,
+        "rating": rating
+    })
+
+# =====================================================
+# 12. Streamlit UI
 # =====================================================
 st.set_page_config(page_title="Hotel AI Chatbot", layout="centered")
 st.title("Hotel Customer Support Chatbot")
@@ -187,6 +225,7 @@ st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
+# 展示历史消息
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -198,3 +237,29 @@ if user_input:
     intent, reply, confidence, response_time = generate_response(user_input)
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
+
+# =====================================================
+# 13. Evaluation Panel (Sidebar)
+# =====================================================
+st.sidebar.header("Chatbot Evaluation")
+
+if st.sidebar.button("Run Test Dataset"):
+    test_data = [
+        {"input": "I want to book a single room tomorrow", "true_intent": "book_hotel",
+         "true_response": "Sure! I can help you book a room for tomorrow."},
+        {"input": "Do you have free wifi?", "true_intent": "ask_wifi",
+         "true_response": "Yes, free Wi-Fi is available in all rooms and public areas."},
+        {"input": "What is the price of deluxe room?", "true_intent": "ask_room_price",
+         "true_response": "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included."}
+    ]
+    acc, y_true, y_pred = evaluate_intent(test_data)
+    avg_bleu, _ = evaluate_response(test_data)
+    st.sidebar.write(f"Intent Recognition Accuracy: {acc:.2f}")
+    st.sidebar.write(f"Average BLEU Score: {avg_bleu:.2f}")
+
+if st.sidebar.checkbox("Collect Feedback for Last Response"):
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+        collect_feedback(st.session_state.messages[-2]["content"], st.session_state.messages[-1]["content"])
+
+if st.sidebar.checkbox("Show Feedback Log"):
+    st.sidebar.write(st.session_state.evaluation_log)
