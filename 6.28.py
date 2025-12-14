@@ -56,43 +56,57 @@ def extract_entities(user_input):
 # 6. Response Templates
 # =====================================================
 responses = {
-    "greeting": "Hello! Welcome to our hotel service. How may I assist you today?",
-    "goodbye": "Thank you for visiting. Have a nice day!",
-    "book_hotel": "Sure{PERSON}! I can help you book a room{LOCATION}{DATE}.",
-    "cancel_hotel_reservation": "Your booking{LOCATION}{DATE} has been successfully canceled.",
-    "add_night": "Your stay has been extended by one night{LOCATION}{DATE}.",
-    "bring_pets": "Yes{PERSON}, pets are allowed at our hotel{LOCATION}{DATE}. Additional charges may apply.",
-    "book_parking_space": "Parking has been successfully reserved for you{LOCATION}{DATE}{PERSON}.",
-    "cancellation_fees": "Early cancellation fee is RM50 if canceled within 24 hours of check-in.",
-    "change_hotel_reservation": "You can change your reservation by contacting the front desk or online portal.",
-    "check_child_policy": "Children under 12 stay free. Accessibility services are available on request.",
-    "check_functions": "I can assist with bookings, cancellations, room info, and hotel services.",
-    "check_hotel_facilities": "The hotel offers gym, swimming pool, spa, and conference rooms.",
-    "check_hotel_offers": "Current offers include 10% off for early bookings and weekend discounts.",
-    "check_hotel_prices": "Room prices vary: Deluxe RM180, Suite RM250, Executive RM300 per night.",
-    "check_hotel_reservation": "You can check your reservation status online or via email confirmation.",
-    "check_in": "Check-in starts at 2:00 PM.",
-    "check_out": "Check-out is before 12:00 PM.",
-    "check_lost_item": "Report lost items at the reception desk immediately.",
-    "check_menu": "Our restaurant menu includes local and international cuisine.",
-    "check_nearby_attractions": "Nearby attractions include the city museum, beach, and shopping mall.",
-    "check_payment_methods": "We accept cash, credit cards, and online payments.",
-    "check_room_availability": "Please provide dates to check room availability.",
-    "check_room_type": "We offer Single, Double, Deluxe, and Suite rooms.",
-    "check_smoking_policy": "All rooms are non-smoking except designated areas.",
-    "customer_service": "You can contact the front desk at extension 0.",
-    "file_complaint": "You can file a complaint at reception or via our website form.",
-    "get_refund": "Refunds are processed within 5 business days after cancellation.",
-    "host_event": "You can rent event spaces by contacting our events coordinator.",
-    "human_agent": "Connecting you to a human agent, please wait.",
-    "invoices": "Invoices are emailed automatically after your stay.",
-    "leave_review": "You can leave a review on our website or TripAdvisor.",
-    "redeem_points": "Redeem your membership points at checkout or online portal.",
-    "search_hotel": "Our hotel is located at 123 Main Street, City Center.",
-    "shuttle_service": "We offer shuttle service to the airport and nearby attractions.",
-    "store_luggage": "Luggage storage is available at reception before check-in and after check-out.",
-    "unknown": "Sorry, I am not sure I understand. Could you please rephrase?"
+    "greeting":                     "Welcome to Astra Imperium Hotel. I'm your virtual assistant. How may I assist you today?",
+    "goodbye":                       "Thank you for choosing Astra Imperium Hotel. We look forward to welcoming you again soon!",
+    "unknown":                       "I'm sorry, I don't understand your question. Could you please rephrase?",
+    
+    # Booking & Reservation
+    "book_hotel":                     "Sure{PERSON}! I can help you book a room{LOCATION}{DATE}. Please let me know if you have any special requests.",
+    "cancel_hotel_reservation":       "No problem{PERSON}. Your booking{LOCATION}{DATE} has been successfully canceled.",
+    "change_hotel_reservation":       "To modify your reservation{LOCATION}{DATE}, please contact our Reservations Team.",
+    "add_night":                      "To extend your stay or add extra nights{LOCATION}{DATE}, please contact the Front Desk.",
+    "book_parking_space":             "Parking can be reserved{LOCATION}{DATE}. Additional charges may apply.",
+
+    # Hotel Info
+    "check_hotel_facilities":         "Our facilities include gym, spa, infinity pool, rooftop lounge, business center, and all-day dining.",
+    "check_hotel_offers":             "Current promotions and packages are listed on our website under 'Offers'.",
+    "check_hotel_prices":             "Room rates vary by date and room type. Please check our website or contact Reservations for exact pricing.",
+    "check_room_type":                "Our room categories include Superior, Deluxe, Premier, Executive Suite, and Astra Imperial Suite.",
+    "check_room_availability":        "To check room availability, please provide your preferred dates or check our booking page online.",
+    "check_menu":                     "Our restaurant menu is available at SkyDine Restaurant or via QR code in your room.",
+    "check_nearby_attractions":       "Nearby attractions include Petronas Twin Towers, Pavilion Bukit Bintang, National Museum, and Jalan Alor Street Food Market.",
+    "check_child_policy":             "Children under 12 stay free with existing bedding. Baby cots and high chairs available on request.",
+    "check_smoking_policy":           "All rooms are non-smoking. Designated smoking areas are available outside.",
+    "check_payment_methods":          "We accept cash, credit cards (Visa, Mastercard, Amex), and e-wallets (GrabPay, Touch 'n Go).",
+    "check_lost_item":                "Report lost items immediately to the Front Desk. Security will contact you once located.",
+    "check_hotel_reservation":        "To check your reservation status, provide your booking reference to the Front Desk or email bookings@astragroup.com.",
+
+    # Services
+    "customer_service":               "For assistance, call the Front Desk or email support@astragroup.com.",
+    "human_agent":                    "Connecting you to a hotel representative. Please wait.",
+    "host_event":                     "To host an event, email events@astragroup.com or call our Events Team.",
+    "file_complaint":                 "To file a complaint, speak to the Duty Manager or email quality@astragroup.com.",
+    "leave_review":                   "Leave a review on Google Maps, TripAdvisor, or our website under 'Guest Reviews'.",
+    "invoices":                       "Request invoices at the Front Desk or email billing@astraimperium.com with your booking reference.",
+    "get_refund":                     "Refunds are processed within 7-14 business days depending on payment method.",
+    "redeem_points":                  "Redeem membership points at checkout or via your online account.",
+    "shuttle_service":                "We provide airport transfers (sedan RM80, van RM120). Book at least 24 hours in advance.",
+
+    # Check-in / Check-out
+    "check_in":                       "Check-in starts at 3:00 PM. Early check-in subject to availability. Security deposit required.",
+    "check_out":                      "Check-out is before 12:00 PM. Late check-out until 2:00 PM is RM50 if available.",
+    
+    # Amenities / Wi-Fi / Pets
+    "ask_room_price":                  "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included.",
+    "ask_wifi":                        "Yes, free Wi-Fi is available in all rooms and public areas.",
+    "bring_pets":                      "Pets under 10kg are allowed with a RM50 cleaning fee. Service animals are welcome. Pets not allowed in dining/pool areas.",
+
+    # Miscellaneous
+    "search_hotel":                    "Astra Imperium Hotel is located at 18 Jalan Alor, Kuala Lumpur City Centre.",
+    "store_luggage":                   "Complimentary luggage storage is available before check-in or after check-out.",
+    "check_functions":                 "I can help with room reservations, hotel information, facilities, services, and general inquiries."
 }
+
 
 
 # =====================================================
@@ -194,4 +208,5 @@ if user_input:
     })
 
     st.rerun()
+
 
