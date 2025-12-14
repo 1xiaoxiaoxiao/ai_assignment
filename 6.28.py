@@ -147,11 +147,11 @@ def generate_response(user_input):
     # --- Check if multi-turn in progress ---
     if st.session_state.pending_intent:
         current_intent = st.session_state.pending_intent
-        # Update the collected slots
+        # 更新收集到的槽位
         for slot in intent_slots.get(current_intent, []):
             if entities.get(slot):
                 st.session_state.collected_info[slot] = entities[slot][0]
-        #
+        # 检查是否还缺槽位
         missing = [slot for slot in intent_slots.get(current_intent, []) if slot not in st.session_state.collected_info]
         if missing:
             reply = f"Please provide the following information: {', '.join(missing)}."
@@ -167,7 +167,7 @@ def generate_response(user_input):
         missing_entities = [slot for slot in intent_slots[intent] if not entities.get(slot)]
         if missing_entities:
             st.session_state.pending_intent = intent
-            # Save the provided slots
+            # 保存已提供槽位
             for slot in intent_slots[intent]:
                 if entities.get(slot):
                     st.session_state.collected_info[slot] = entities[slot][0]
@@ -228,23 +228,22 @@ st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
 
-# show history message
+# 展示历史消息
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"], unsafe_allow_html=True)
 
-# user input
+# 用户输入
 user_input = st.chat_input("Type your message...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     intent, reply, confidence, response_time = generate_response(user_input)
 
+    # 显示小字意图和置信度在回答上方
     intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence}</sub>"
     display_reply = f"{intent_info}\n\n{reply}"
 
     st.session_state.messages.append({"role": "assistant", "content": display_reply})
     st.rerun()
-
-
 
