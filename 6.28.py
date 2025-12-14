@@ -75,22 +75,39 @@ def predict_intent_confidence(text):
 # -----------------------------
 # 6️⃣ Streamlit UI
 # -----------------------------
-st.set_page_config(page_title="Hotel FAQ Chatbot", layout="centered")
+st.set_page_config(page_title="Hotel FAQ Chatbot", layout="wide")
 st.title("Astra Imperium Hotel FAQ Chatbot")
 st.caption("SVM + TF-IDF + spaCy NER (Fixed Responses)")
 
-user_input = st.text_input("You:", "")
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-if user_input:
+user_input = st.text_input("Type your message:", "")
+
+if st.button("Send") and user_input:
     start_time = time.time()
     
     intent, confidence = predict_intent_confidence(user_input)
-    entities = extract_entities(user_input)  # optional, can log if needed
+    entities = extract_entities(user_input)
     reply = responses.get(intent, responses["unknown_intent"])
     
     elapsed_time = time.time() - start_time
     
-    st.markdown(f"**Bot:** {reply}")
-    st.markdown(f"**Predicted Intent:** {intent}")
-    st.markdown(f"**Confidence:** {confidence:.2f}%")
-    st.markdown(f"**Response Time:** {elapsed_time:.3f} seconds")
+    # Append to chat history
+    st.session_state.chat_history.append({
+        "user": user_input,
+        "bot": reply,
+        "intent": intent,
+        "confidence": f"{confidence:.2f}%",
+        "time": f"{elapsed_time:.3f}s"
+    })
+    
+    user_input = ""  # clear input
+
+# Display chat history
+for chat in st.session_state.chat_history:
+    st.markdown(f"**You:** {chat['user']}")
+    st.markdown(f"**Bot:** {chat['bot']}")
+    st.markdown(f"**Intent:** {chat['intent']} | **Confidence:** {chat['confidence']} | **Response Time:** {chat['time']}")
+    st.markdown("---")
+
