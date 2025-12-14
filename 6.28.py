@@ -135,7 +135,7 @@ def main():
             "role": "assistant",
             "content": response,
             "intent": intent_name,
-            "confidence": f"{confidence_display:.2f}%",
+            "confidence": confidence_display,
             "time": f"{response_time:.3f}s"
         })
     
@@ -151,4 +151,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
