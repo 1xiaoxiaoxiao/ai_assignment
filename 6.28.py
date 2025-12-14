@@ -90,16 +90,26 @@ def predict_intent(text):
     scores = clf.decision_function(vec)
     best_index = np.argmax(scores)
     intent = clf.classes_[best_index]
-    # Confidence as % from margin
+    
+    # 1️⃣ 用 margin 判断 High / Medium / Low
     if len(scores[0]) > 1:
         sorted_scores = np.sort(scores[0])[::-1]
         margin = sorted_scores[0] - sorted_scores[1]
-        confidence = min(max(margin / sorted_scores[0], 0), 1)
     else:
-        confidence = 1.0
+        margin = scores[0][0]
+    
+    # 2️⃣ 转换为 High / Medium / Low
+    if margin > 1.0:
+        confidence = "High"
+    elif margin > 0.5:
+        confidence = "Medium"
+    else:
+        confidence = "Low"
+    
     response = responses.get(intent, responses["unknown_intent"])
     elapsed_time = time.time() - start_time
-    return intent, response, confidence * 100, elapsed_time
+    return intent, response, confidence, elapsed_time
+
 
 # -----------------------------
 # 6️⃣ Streamlit Chat UI
@@ -141,3 +151,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
