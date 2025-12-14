@@ -228,17 +228,21 @@ if "messages" not in st.session_state:
 # 展示历史消息
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        st.markdown(msg["content"], unsafe_allow_html=True)
 
+# 用户输入
 user_input = st.chat_input("Type your message...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     intent, reply, confidence, response_time = generate_response(user_input)
-    
-    # 在聊天中显示回答 + 意图和置信度
-    display_reply = f"{reply}\n\n**Predicted Intent:** {intent} | **Confidence:** {confidence}"
+
+    # 显示小字意图和置信度在回答上方
+    intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence}</sub>"
+    display_reply = f"{intent_info}\n\n{reply}"
+
     st.session_state.messages.append({"role": "assistant", "content": display_reply})
     st.rerun()
+
 
 
