@@ -95,8 +95,17 @@ st.caption("SVM + TF-IDF + spaCy NER (Fixed Responses)")
 user_input = st.text_input("You:", "")
 
 if user_input:
-    intent = get_intent(user_input)
-    entities = extract_entities(user_input)  # optional logging
+    start_time = time.time()
+    
+    intent, confidence = predict_intent_confidence(user_input)
+    entities = extract_entities(user_input)  # optional, can log if needed
     reply = responses.get(intent, responses["unknown_intent"])
+    
+    elapsed_time = time.time() - start_time
+    
     st.markdown(f"**Bot:** {reply}")
+    st.markdown(f"**Predicted Intent:** {intent}")
+    st.markdown(f"**Confidence:** {confidence:.2f}%")
+    st.markdown(f"**Response Time:** {elapsed_time:.3f} seconds")}")
+
 
