@@ -1,107 +1,265 @@
 # =====================================================
-# Hotel Customer Support Chatbot (SVM + spaCy) for Streamlit
+# Hotel Customer Support Chatbot (Streamlit + SVM + spaCy)
+# Multi-turn Slot Filling + Evaluation
 # =====================================================
 
 import streamlit as st
-import pandas as pd
 import re
 import spacy
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import LinearSVC
-from joblib import load
-import random
 import time
+from joblib import load
+from sklearn.metrics import accuracy_score
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
-# -------------------------
+# =====================================================
 # 1. Configuration
-# -------------------------
-CONFIDENCE_THRESHOLD = 0.75  # For SVM, this can be used if we use decision_function
+# =====================================================
+CONFIDENCE_MARGIN_THRESHOLD = 0.3
 
-# -------------------------
+# =====================================================
 # 2. Load spaCy Model
-# -------------------------
-nlp = spacy.load("en_core_web_sm")
+# =====================================================
+@st.cache_resource
+def load_spacy():
+    return spacy.load("en_core_web_sm")
 
-# -------------------------
-# 3. Text Preprocessing
-# -------------------------
+nlp = load_spacy()
+
+# =====================================================
+# 3. Load ML Model & Vectorizer
+# =====================================================
+@st.cache_resource
+def load_models():
+    model = load("intent_model_spacy.joblib")
+    vectorizer = load("tfidf_vectorizer_spacy.joblib")
+    return model, vectorizer
+
+svm_model, vectorizer = load_models()
+
+# =====================================================
+# 4. Text Preprocessing
+# =====================================================
 def preprocess_text(text):
     text = text.lower()
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    text = re.sub(r"[^a-zA-Z\s]", "", text)
     doc = nlp(text)
-    tokens = [token.lemma_ for token in doc if not token.is_stop and token.is_alpha]
-    return ' '.join(tokens)
+    tokens = [token.lemma_ for token in doc if token.is_alpha and not token.is_stop]
+    return " ".join(tokens)
 
-# -------------------------
-# 4. Load Model and Vectorizer
-# -------------------------
-@st.cache_resource
-def load_resources():
-    try:
-        svm_model = load("intent_model_spacy.joblib")
-        vectorizer = load("tfidf_vectorizer_spacy.joblib")
-        return svm_model, vectorizer
-    except FileNotFoundError as e:
-        st.error(f"Missing model/vectorizer file: {e.filename}")
-        return None, None
+# =====================================================
+# 5. Entity Extraction (NER)
+# =====================================================
+def extract_entities(user_input):
+    doc = nlp(user_input)
+    entities = {"PERSON": [], "DATE": [], "GPE": [], "ROOM_TYPE": []}  # ROOM_TYPE手动识别
+    for ent in doc.ents:
+        if ent.label_ in entities:
+            entities[ent.label_].append(ent.text)
+    # 简单规则识别房型
+    for room in ["single", "double", "deluxe", "premier", "suite"]:
+        if room in user_input.lower():
+            entities["ROOM_TYPE"].append(room)
+    return entities
 
-svm_model, vectorizer = load_resources()
-
-# -------------------------
-# 5. Responses
-# -------------------------
+# =====================================================
+# 6. Response Templates
+# =====================================================
 responses = {
-    "ask_room_price": "Our deluxe room costs RM180 per night.",
-    "ask_booking": "I can help you book a room. Please provide your date and number of guests.",
-    "ask_checkin_time": "Check-in time starts from 2:00 PM.",
-    "ask_checkout_time": "Check-out time is before 12:00 PM.",
-    "greeting": "Hello! How can I help you today?",
-    "goodbye": "Thank you for visiting. Have a nice day!"
+    "greeting": "Welcome to Astra Imperium Hotel. How may I assist you today?",
+    "goodbye": "Thank you for choosing Astra Imperium Hotel. We look forward to welcoming you again soon!",
+    "unknown": "I'm sorry, I don't understand your question. Could you please rephrase?",
+    "book_hotel": "Sure{PERSON}! I can help you book a room{LOCATION}{DATE}.",
+    "cancel_hotel_reservation": "I can help you cancel your booking{LOCATION}{DATE}.",
+    "change_hotel_reservation": "To modify your reservation{LOCATION}{DATE}, please contact our Reservations Team.",
+    "add_night": "To extend your stay or add extra nights{LOCATION}{DATE}, please contact the Front Desk.",
+    "book_parking_space": "Parking can be reserved{LOCATION}{DATE}. Additional charges may apply.",
+    "ask_room_price": "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included.",
+    "ask_wifi": "Yes, free Wi-Fi is available in all rooms and public areas.",
+    "check_in": "Check-in starts at 3:00 PM. Early check-in subject to availability. Security deposit required.",
+    "check_out": "Check-out is before 12:00 PM. Late check-out until 2:00 PM is RM50 if available."
 }
 
-# -------------------------
-# 6. Suggested Questions
-# -------------------------
-PROMPT_MAPPING = {
-    "ask_room_price": "What is the room price?",
-    "ask_booking": "I want to book a room.",
-    "ask_checkin_time": "What is the check-in time?",
-    "ask_checkout_time": "What is the check-out time?"
+# =====================================================
+# 7. Define required slots for each intent
+# =====================================================
+intent_slots = {
+    "book_hotel": ["ROOM_TYPE", "DATE"],
+    "cancel_hotel_reservation": ["DATE"],
+    "change_hotel_reservation": ["DATE", "ROOM_TYPE"],
+    "add_night": ["DATE", "ROOM_TYPE"],
+    "book_parking_space": ["DATE"]
 }
 
-SUGGESTED_INTENTS = list(PROMPT_MAPPING.keys())
+# =====================================================
+# 8. Fill entity placeholders
+# =====================================================
+def fill_entities(template, entities):
+    person = ", ".join(entities.get("PERSON", []))
+    date = ", ".join(entities.get("DATE", []))
+    location = ", ".join(entities.get("GPE", []))
+    person = f" {person}" if person else ""
+    date = f" for {date}" if date else ""
+    location = f" in {location}" if location else ""
+    return template.format(PERSON=person, DATE=date, LOCATION=location)
 
-# -------------------------
-# 7. Predict Intent Function
-# -------------------------
+# =====================================================
+# 9. Intent Prediction
+# =====================================================
 def predict_intent(user_input):
-    if svm_model is None or vectorizer is None:
-        return "setup_error", "Model not loaded.", "N/A", 0.0
-
     start_time = time.time()
+    text = user_input.lower()
+
+    # --- Rule-based ---
+    if any(k in text for k in ["wifi", "internet"]):
+        return "ask_wifi", "Rule", time.time() - start_time
+    if any(k in text for k in ["price", "cost", "rate"]):
+        return "ask_room_price", "Rule", time.time() - start_time
+    if "check in" in text or "check-in" in text:
+        return "check_in", "Rule", time.time() - start_time
+    if "check out" in text or "checkout" in text:
+        return "check_out", "Rule", time.time() - start_time
+
+    # --- ML-based ---
     cleaned = preprocess_text(user_input)
     vec = vectorizer.transform([cleaned])
+    scores = svm_model.decision_function(vec)
+    best_index = scores.argmax()
+    intent = svm_model.classes_[best_index]
+    sorted_scores = sorted(scores[0], reverse=True)
+    margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else sorted_scores[0]
+    elapsed = time.time() - start_time
+    if margin < CONFIDENCE_MARGIN_THRESHOLD:
+        return "unknown", f"Low confidence ({margin:.2f})", elapsed
+    return intent, f"SVM ({margin:.2f})", elapsed
 
-    # For SVM, we can use decision_function as pseudo-confidence
-    decision_scores = svm_model.decision_function(vec)
-    predicted_index = decision_scores.argmax() if len(decision_scores.shape) > 1 else 0
-    if len(decision_scores.shape) > 1:
-        confidence_score = max(decision_scores[0])
-    else:
-        confidence_score = abs(decision_scores[0])  # fallback for single-class
+# =====================================================
+# 10. Generate Response (Multi-turn)
+# =====================================================
+def generate_response(user_input):
+    if "pending_intent" not in st.session_state:
+        st.session_state.pending_intent = None
+    if "collected_info" not in st.session_state:
+        st.session_state.collected_info = {}
 
-    intent_name = svm_model.classes_[predicted_index]
-    response = responses.get(intent_name, "Sorry, I do not understand your request.")
-    confidence_display = f"{confidence_score*100:.2f}%"
+    intent, confidence, response_time = predict_intent(user_input)
+    entities = extract_entities(user_input)
 
-    end_time = time.time()
-    response_time = end_time - start_time
+    # --- Check if multi-turn in progress ---
+    if st.session_state.pending_intent:
+        current_intent = st.session_state.pending_intent
+        # 更新收集到的槽位
+        for slot in intent_slots.get(current_intent, []):
+            if entities.get(slot):
+                st.session_state.collected_info[slot] = entities[slot][0]
+        # 检查是否还缺槽位
+        missing = [slot for slot in intent_slots.get(current_intent, []) if slot not in st.session_state.collected_info]
+        if missing:
+            reply = f"Please provide the following information: {', '.join(missing)}."
+            return current_intent, reply, confidence, response_time
+        else:
+            reply = f"I have recorded your information: {st.session_state.collected_info}. Please proceed to the website or Front Desk to complete the operation."
+            st.session_state.pending_intent = None
+            st.session_state.collected_info = {}
+            return current_intent, reply, confidence, response_time
 
-    return intent_name, response, confidence_display, response_time
+    # --- New intent with required slots ---
+    if intent in intent_slots:
+        missing_entities = [slot for slot in intent_slots[intent] if not entities.get(slot)]
+        if missing_entities:
+            st.session_state.pending_intent = intent
+            # 保存已提供槽位
+            for slot in intent_slots[intent]:
+                if entities.get(slot):
+                    st.session_state.collected_info[slot] = entities[slot][0]
+            reply = f"Sure! I can help you with that. Please provide: {', '.join(missing_entities)}."
+            return intent, reply, confidence, response_time
 
-# -------------------------
-# 8. Streamlit Chatbot
-# -------------------------
-st.set_page_config(page_title="Hotel AI Chatbot", layout="centered") st.title("Hotel Customer Support Chatbot") st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling") if "messages" not in st.session_state: st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}] # 展示历史消息 for msg in st.session_state.messages: with st.chat_message(msg["role"]): st.markdown(msg["content"], unsafe_allow_html=True) # 用户输入 user_input = st.chat_input("Type your message...") if user_input: st.session_state.messages.append({"role": "user", "content": user_input}) intent, reply, confidence, response_time = generate_response(user_input) # 显示小字意图和置信度在回答上方 intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence}</sub>" display_reply = f"{intent_info}\n\n{reply}" st.session_state.messages.append({"role": "assistant", "content": display_reply}) st.rerun()
+    # --- Single-turn reply ---
+    template = responses.get(intent, responses["unknown"])
+    reply = fill_entities(template, entities)
+    return intent, reply, confidence, response_time
 
+# =====================================================
+# 11. Evaluation Utilities
+# =====================================================
+if "evaluation_log" not in st.session_state:
+    st.session_state.evaluation_log = []
 
+def evaluate_intent(test_dataset):
+    y_true = []
+    y_pred = []
+    for item in test_dataset:
+        intent, _, _ = predict_intent(item["input"])
+        y_true.append(item["true_intent"])
+        y_pred.append(intent)
+    acc = accuracy_score(y_true, y_pred)
+    return acc, y_true, y_pred
+
+def evaluate_response(test_dataset):
+    bleu_scores = []
+    smoothie = SmoothingFunction().method4
+    for item in test_dataset:
+        _, reply, _, _ = generate_response(item["input"])
+        reference = [item["true_response"].split()]
+        candidate = reply.split()
+        score = sentence_bleu(reference, candidate, smoothing_function=smoothie)
+        bleu_scores.append(score)
+    avg_bleu = sum(bleu_scores)/len(bleu_scores) if bleu_scores else 0
+    return avg_bleu, bleu_scores
+
+def collect_feedback(user_input, bot_reply):
+    rating = st.slider(f"Rate the response for: '{bot_reply}'", 1, 5, 3, key=f"fb_{len(st.session_state.evaluation_log)}")
+    st.session_state.evaluation_log.append({
+        "input": user_input,
+        "response": bot_reply,
+        "rating": rating
+    })
+
+# =====================================================
+# 12. Streamlit UI
+# =====================================================
+st.set_page_config(page_title="Hotel AI Chatbot", layout="centered")
+st.title("Hotel Customer Support Chatbot")
+st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
+
+# 展示历史消息
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+user_input = st.chat_input("Type your message...")
+
+if user_input:
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    intent, reply, confidence, response_time = generate_response(user_input)
+    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.rerun()
+
+# =====================================================
+# 13. Evaluation Panel (Sidebar)
+# =====================================================
+st.sidebar.header("Chatbot Evaluation")
+
+if st.sidebar.button("Run Test Dataset"):
+    test_data = [
+        {"input": "I want to book a single room tomorrow", "true_intent": "book_hotel",
+         "true_response": "Sure! I can help you book a room for tomorrow."},
+        {"input": "Do you have free wifi?", "true_intent": "ask_wifi",
+         "true_response": "Yes, free Wi-Fi is available in all rooms and public areas."},
+        {"input": "What is the price of deluxe room?", "true_intent": "ask_room_price",
+         "true_response": "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included."}
+    ]
+    acc, y_true, y_pred = evaluate_intent(test_data)
+    avg_bleu, _ = evaluate_response(test_data)
+    st.sidebar.write(f"Intent Recognition Accuracy: {acc:.2f}")
+    st.sidebar.write(f"Average BLEU Score: {avg_bleu:.2f}")
+
+if st.sidebar.checkbox("Collect Feedback for Last Response"):
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+        collect_feedback(st.session_state.messages[-2]["content"], st.session_state.messages[-1]["content"])
+
+if st.sidebar.checkbox("Show Feedback Log"):
+    st.sidebar.write(st.session_state.evaluation_log)
