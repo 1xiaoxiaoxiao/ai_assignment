@@ -1,200 +1,101 @@
 # =====================================================
-# Hotel Customer Support Chatbot (Streamlit + SVM + spaCy)
-# Multi-turn slot filling version
+# Streamlit Hotel FAQ Chatbot (SVM + TF-IDF + spaCy NER)
 # =====================================================
 
 import streamlit as st
-import re
+import pandas as pd
 import spacy
-import time
-from joblib import load
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.svm import LinearSVC
+from collections import defaultdict
+import joblib
 
-# =====================================================
-# 1. Configuration
-# =====================================================
-CONFIDENCE_MARGIN_THRESHOLD = 0.3
+# -----------------------------
+# 1️⃣ Load models & spaCy
+# -----------------------------
+nlp = spacy.load("en_core_web_sm")
+clf = joblib.load("svm_faq_model.joblib")
+vectorizer = joblib.load("tfidf_vectorizer.joblib")
 
-# =====================================================
-# 2. Load spaCy Model
-# =====================================================
-@st.cache_resource
-def load_spacy():
-    return spacy.load("en_core_web_sm")
+# -----------------------------
+# 2️⃣ Responses dictionary
+# -----------------------------
+responses = {
+    "greeting": "Welcome to Astra Imperium Hotel. I'm your virtual assistant. How may I assist you today?",
+    "check_functions": "I can help with room reservations, hotel information, facilities, services, and general inquiries.",
+    "invoices": "To request an invoice, please visit the Front Desk or email us at billing@astraimperium.com. Provide your booking reference number for quicker processing.",
+    "cancellation_fees": "Cancellations are free up to 24 hours before your check-in date. Cancellations within 24 hours, or no-shows, will incur a charge equivalent to the first night's stay.",
+    "check_in": "Check-in begins at 3:00 PM. Early check-in is subject to room availability. Luggage may be stored at the concierge at no additional cost. A refundable security deposit is required during check-in.",
+    "check_out": "Check-out time is 12:00 PM. Late check-out until 2:00 PM is available for RM50, depending on availability. Please return your key card to the Front Desk upon departure.",
+    "customer_service": "For urgent assistance, please call the Front Desk at +60-3-5555-0199. For feedback and general inquiries, email us at support@astragroup.com.",
+    "human_agent": "To speak with a hotel representative, please contact the Front Desk at +60-3-5555-0199 or request a callback by leaving your name and phone number.",
+    "host_event": "To host an event, meeting, or private function at Astra Imperium, please email our Events Team at events@astragroup.com or call +60-3-5555-0200. Our coordinators will assist with venue selection, setup, and catering.",
+    "file_complaint": "To file a complaint, please speak to the Duty Manager at the Front Desk or email quality@astragroup.com. We will respond within 24 hours.",
+    "leave_review": "You may leave a review on Google Maps, TripAdvisor, or our official website under the 'Guest Reviews' section. We appreciate your feedback.",
+    "book_hotel": "To make a reservation, visit www.astraimperium.com, call our Reservations Department at +60-3-5555-0199, or book in person at the Front Desk. A valid ID is required for all bookings.",
+    "cancel_hotel_reservation": "To cancel your reservation, please contact our Reservations Team at +60-3-5555-0199 or email bookings@astragroup.com with your booking reference number.",
+    "change_hotel_reservation": "To modify your reservation dates, room type, or guest details, please contact our Reservations Team at +60-3-5555-0199 or email bookings@astragroup.com.",
+    "check_hotel_facilities": "Our facilities include an infinity pool, rooftop lounge, fitness centre, spa, business centre, event halls, all-day dining restaurant, and 24-hour concierge service.",
+    "check_hotel_offers": "Current promotions and packages are listed on our website under the 'Offers' section. You may also call our Reservations Team for exclusive in-house deals.",
+    "check_hotel_prices": "Room rates vary by date, room type, and availability. For the most accurate pricing, please check our website at www.astraimperium.com or call our Reservations Team.",
+    "check_hotel_reservation": "To check your reservation status, please provide your booking reference number to the Front Desk or email bookings@astragroup.com.",
+    "search_hotel": "Astra Imperium Hotel is located at 18 Jalan Alor, Kuala Lumpur City Centre—just a 5-minute walk from LRT KLCC Station.",
+    "store_luggage": "Complimentary luggage storage is available 24/7. You may store your bags before check-in or after check-out while exploring the city.",
+    "check_menu": "Our restaurant menu is available at the SkyDine Restaurant (Level 8). You may also view the digital menu through the QR code provided in your room or request a copy from the concierge.",
+    "add_night": "To extend your stay or add additional guests, please contact the Front Desk or call +60-3-5555-0199. Extensions are subject to room availability and rate adjustments.",
+    "book_parking_space": "Parking can be reserved during booking or upon arrival, subject to availability. The rate is RM20 per day for in-house guests.",
+    "bring_pets": "Astra Imperium is pet-friendly. Dogs and cats under 10kg are allowed with a RM50 per-stay cleaning fee. Service animals are welcome at no charge. Pets are not permitted in dining or pool areas.",
+    "redeem_points": "If you are an Astra Rewards member, you may redeem points for discounts or complimentary nights. Log in to your member account on our website or visit the Front Desk for assistance.",
+    "get_refund": "Refunds are processed within 7-14 business days, depending on your payment method. Please contact billing@astragroup.com with your booking reference number.",
+    "shuttle_service": "We provide private airport transfers: RM80 for a sedan and RM120 for a van. Book at least 24 hours in advance via the Front Desk. E-hailing options are also easily available, averaging RM60-70 to KLIA.",
+    "check_room_type": "Our room categories include Superior, Deluxe, Premier, Executive Suite, and the Astra Imperial Suite. Each offers different views and amenities to suit your stay.",
+    "check_room_availability": "To check room availability, please visit our website's booking page or contact the Reservations Team with your preferred dates.",
+    "check_nearby_attractions": "Nearby attractions include the Petronas Twin Towers (1 km), Pavilion Bukit Bintang, the National Museum, and Jalan Alor Street Food Market. Complimentary city maps are available at the concierge.",
+    "check_child_policy": "Children under 12 stay for free using existing bedding. Baby cots and high chairs are available on request at no additional charge. Babysitting services are currently not offered.",
+    "check_smoking_policy": "All guest rooms are non-smoking. A penalty of RM500 applies for violations. Smoking is permitted only in the designated outdoor area near the main lobby.",
+    "check_payment_methods": "We accept cash (MYR), Visa, Mastercard, American Express, and major e-wallets such as GrabPay and Touch 'n Go. A refundable RM100 security deposit is required during check-in.",
+    "check_lost_item": "For lost items, please report immediately to the Front Desk. Our Security Team will review the Lost & Found log and contact you once the item is located.",
+    "goodbye": "Thank you for choosing Astra Imperium Hotel. We look forward to welcoming you again soon!",
+    "unknown_intent": "I'm sorry, I don't understand your question."
+}
 
-nlp = load_spacy()
-
-# =====================================================
-# 3. Load ML Model & Vectorizer
-# =====================================================
-@st.cache_resource
-def load_models():
-    model = load("intent_model_spacy.joblib")
-    vectorizer = load("tfidf_vectorizer_spacy.joblib")
-    return model, vectorizer
-
-svm_model, vectorizer = load_models()
-
-# =====================================================
-# 4. Text Preprocessing
-# =====================================================
+# -----------------------------
+# 3️⃣ Preprocess function
+# -----------------------------
 def preprocess_text(text):
     text = text.lower()
-    text = re.sub(r"[^a-zA-Z\s]", "", text)
-    doc = nlp(text)
-    tokens = [token.lemma_ for token in doc if token.is_alpha and not token.is_stop]
-    return " ".join(tokens)
+    text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+    return text
 
-# =====================================================
-# 5. Entity Extraction (NER)
-# =====================================================
-def extract_entities(user_input):
-    doc = nlp(user_input)
-    entities = {"PERSON": [], "DATE": [], "GPE": [], "ROOM_TYPE": []}  # ROOM_TYPE手动识别
+# -----------------------------
+# 4️⃣ Extract entities
+# -----------------------------
+def extract_entities(text):
+    doc = nlp(text)
+    entities = defaultdict(list)
     for ent in doc.ents:
-        if ent.label_ in entities:
-            entities[ent.label_].append(ent.text)
-    # 简单规则识别房型
-    for room in ["single", "double", "deluxe", "premier", "suite"]:
-        if room in user_input.lower():
-            entities["ROOM_TYPE"].append(room)
+        entities[ent.label_].append(ent.text)
     return entities
 
-# =====================================================
-# 6. Response Templates
-# =====================================================
-responses = {
-    "greeting": "Welcome to Astra Imperium Hotel. How may I assist you today?",
-    "goodbye": "Thank you for choosing Astra Imperium Hotel. We look forward to welcoming you again soon!",
-    "unknown": "I'm sorry, I don't understand your question. Could you please rephrase?",
-    "book_hotel": "Sure{PERSON}! I can help you book a room{LOCATION}{DATE}.",
-    "cancel_hotel_reservation": "I can help you cancel your booking{LOCATION}{DATE}.",
-    "change_hotel_reservation": "To modify your reservation{LOCATION}{DATE}, please contact our Reservations Team.",
-    "add_night": "To extend your stay or add extra nights{LOCATION}{DATE}, please contact the Front Desk.",
-    "book_parking_space": "Parking can be reserved{LOCATION}{DATE}. Additional charges may apply.",
-    "ask_room_price": "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included.",
-    "ask_wifi": "Yes, free Wi-Fi is available in all rooms and public areas.",
-    "check_in": "Check-in starts at 3:00 PM. Early check-in subject to availability. Security deposit required.",
-    "check_out": "Check-out is before 12:00 PM. Late check-out until 2:00 PM is RM50 if available."
-}
+# -----------------------------
+# 5️⃣ Predict intent
+# -----------------------------
+def get_intent(text):
+    x = vectorizer.transform([preprocess_text(text)])
+    return clf.predict(x)[0]
 
-# =====================================================
-# 7. Define required slots for each intent
-# =====================================================
-intent_slots = {
-    "book_hotel": ["ROOM_TYPE", "DATE"],
-    "cancel_hotel_reservation": ["DATE"],
-    "change_hotel_reservation": ["DATE", "ROOM_TYPE"],
-    "add_night": ["DATE", "ROOM_TYPE"],
-    "book_parking_space": ["DATE"]
-}
+# -----------------------------
+# 6️⃣ Streamlit UI
+# -----------------------------
+st.set_page_config(page_title="Hotel FAQ Chatbot", layout="centered")
+st.title("Astra Imperium Hotel FAQ Chatbot")
+st.caption("SVM + TF-IDF + spaCy NER (Fixed Responses)")
 
-# =====================================================
-# 8. Fill entity placeholders
-# =====================================================
-def fill_entities(template, entities):
-    person = ", ".join(entities.get("PERSON", []))
-    date = ", ".join(entities.get("DATE", []))
-    location = ", ".join(entities.get("GPE", []))
-    person = f" {person}" if person else ""
-    date = f" for {date}" if date else ""
-    location = f" in {location}" if location else ""
-    return template.format(PERSON=person, DATE=date, LOCATION=location)
-
-# =====================================================
-# 9. Intent Prediction
-# =====================================================
-def predict_intent(user_input):
-    start_time = time.time()
-    text = user_input.lower()
-
-    # --- Rule-based ---
-    if any(k in text for k in ["wifi", "internet"]):
-        return "ask_wifi", "Rule", time.time() - start_time
-    if any(k in text for k in ["price", "cost", "rate"]):
-        return "ask_room_price", "Rule", time.time() - start_time
-    if "check in" in text or "check-in" in text:
-        return "check_in", "Rule", time.time() - start_time
-    if "check out" in text or "checkout" in text:
-        return "check_out", "Rule", time.time() - start_time
-
-    # --- ML-based ---
-    cleaned = preprocess_text(user_input)
-    vec = vectorizer.transform([cleaned])
-    scores = svm_model.decision_function(vec)
-    best_index = scores.argmax()
-    intent = svm_model.classes_[best_index]
-    sorted_scores = sorted(scores[0], reverse=True)
-    margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else sorted_scores[0]
-    elapsed = time.time() - start_time
-    if margin < CONFIDENCE_MARGIN_THRESHOLD:
-        return "unknown", f"Low confidence ({margin:.2f})", elapsed
-    return intent, f"SVM ({margin:.2f})", elapsed
-
-# =====================================================
-# 10. Generate Response (Multi-turn)
-# =====================================================
-def generate_response(user_input):
-    if "pending_intent" not in st.session_state:
-        st.session_state.pending_intent = None
-    if "collected_info" not in st.session_state:
-        st.session_state.collected_info = {}
-
-    intent, confidence, response_time = predict_intent(user_input)
-    entities = extract_entities(user_input)
-
-    # --- Check if multi-turn in progress ---
-    if st.session_state.pending_intent:
-        current_intent = st.session_state.pending_intent
-        # 更新收集到的槽位
-        for slot in intent_slots.get(current_intent, []):
-            if entities.get(slot):
-                st.session_state.collected_info[slot] = entities[slot][0]
-        # 检查是否还缺槽位
-        missing = [slot for slot in intent_slots.get(current_intent, []) if slot not in st.session_state.collected_info]
-        if missing:
-            reply = f"Please provide the following information: {', '.join(missing)}."
-            return current_intent, reply, confidence, response_time
-        else:
-            reply = f"I have recorded your information: {st.session_state.collected_info}. Please proceed to the website or Front Desk to complete the operation."
-            st.session_state.pending_intent = None
-            st.session_state.collected_info = {}
-            return current_intent, reply, confidence, response_time
-
-    # --- New intent with required slots ---
-    if intent in intent_slots:
-        missing_entities = [slot for slot in intent_slots[intent] if not entities.get(slot)]
-        if missing_entities:
-            st.session_state.pending_intent = intent
-            # 保存已提供槽位
-            for slot in intent_slots[intent]:
-                if entities.get(slot):
-                    st.session_state.collected_info[slot] = entities[slot][0]
-            reply = f"Sure! I can help you with that. Please provide: {', '.join(missing_entities)}."
-            return intent, reply, confidence, response_time
-
-    # --- Single-turn reply ---
-    template = responses.get(intent, responses["unknown"])
-    reply = fill_entities(template, entities)
-    return intent, reply, confidence, response_time
-
-# =====================================================
-# 11. Streamlit UI
-# =====================================================
-st.set_page_config(page_title="Hotel AI Chatbot", layout="centered")
-st.title("Hotel Customer Support Chatbot")
-st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
-
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
-
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-user_input = st.chat_input("Type your message...")
+user_input = st.text_input("You:", "")
 
 if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    intent, reply, confidence, response_time = generate_response(user_input)
-    st.session_state.messages.append({"role": "assistant", "content": reply})
-    st.rerun()
+    intent = get_intent(user_input)
+    entities = extract_entities(user_input)  # optional logging
+    reply = responses.get(intent, responses["unknown_intent"])
+    st.markdown(f"**Bot:** {reply}")
