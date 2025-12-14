@@ -218,6 +218,9 @@ def collect_feedback(user_input, bot_reply):
 # =====================================================
 # 12. Streamlit UI
 # =====================================================
+# =====================================================
+# Streamlit UI - Hotel Customer Support Chatbot
+# =====================================================
 st.set_page_config(page_title="Hotel AI Chatbot", layout="centered")
 st.title("Hotel Customer Support Chatbot")
 st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
@@ -228,38 +231,20 @@ if "messages" not in st.session_state:
 # 展示历史消息
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        st.markdown(msg["content"], unsafe_allow_html=True)
 
+# 用户输入
 user_input = st.chat_input("Type your message...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     intent, reply, confidence, response_time = generate_response(user_input)
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+
+    # 显示小字意图和置信度在回答上方
+    intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence}</sub>"
+    display_reply = f"{intent_info}\n\n{reply}"
+
+    st.session_state.messages.append({"role": "assistant", "content": display_reply})
     st.rerun()
 
-# =====================================================
-# 13. Evaluation Panel (Sidebar)
-# =====================================================
-st.sidebar.header("Chatbot Evaluation")
 
-if st.sidebar.button("Run Test Dataset"):
-    test_data = [
-        {"input": "I want to book a single room tomorrow", "true_intent": "book_hotel",
-         "true_response": "Sure! I can help you book a room for tomorrow."},
-        {"input": "Do you have free wifi?", "true_intent": "ask_wifi",
-         "true_response": "Yes, free Wi-Fi is available in all rooms and public areas."},
-        {"input": "What is the price of deluxe room?", "true_intent": "ask_room_price",
-         "true_response": "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included."}
-    ]
-    acc, y_true, y_pred = evaluate_intent(test_data)
-    avg_bleu, _ = evaluate_response(test_data)
-    st.sidebar.write(f"Intent Recognition Accuracy: {acc:.2f}")
-    st.sidebar.write(f"Average BLEU Score: {avg_bleu:.2f}")
-
-if st.sidebar.checkbox("Collect Feedback for Last Response"):
-    if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-        collect_feedback(st.session_state.messages[-2]["content"], st.session_state.messages[-1]["content"])
-
-if st.sidebar.checkbox("Show Feedback Log"):
-    st.sidebar.write(st.session_state.evaluation_log)
