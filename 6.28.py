@@ -1,6 +1,6 @@
 # =====================================================
 # Hotel Customer Support Chatbot (Streamlit + SVM + spaCy)
-# Multi-turn slot filling version with PERSON slot
+# Multi-turn slot filling version
 # =====================================================
 
 import streamlit as st
@@ -49,11 +49,11 @@ def preprocess_text(text):
 # =====================================================
 def extract_entities(user_input):
     doc = nlp(user_input)
-    entities = {"PERSON": [], "DATE": [], "GPE": [], "ROOM_TYPE": []}
+    entities = {"PERSON": [], "DATE": [], "GPE": [], "ROOM_TYPE": []}  # ROOM_TYPE手动识别
     for ent in doc.ents:
         if ent.label_ in entities:
             entities[ent.label_].append(ent.text)
-    # 规则识别房型
+    # 简单规则识别房型
     for room in ["single", "double", "deluxe", "premier", "suite"]:
         if room in user_input.lower():
             entities["ROOM_TYPE"].append(room)
@@ -66,11 +66,11 @@ responses = {
     "greeting": "Welcome to Astra Imperium Hotel. How may I assist you today?",
     "goodbye": "Thank you for choosing Astra Imperium Hotel. We look forward to welcoming you again soon!",
     "unknown": "I'm sorry, I don't understand your question. Could you please rephrase?",
-    "book_hotel": "Sure{PERSON}! I can help you book a room{ROOM_TYPE}{DATE}.",
-    "cancel_hotel_reservation": "I can help you cancel your booking{PERSON}{DATE}.",
-    "change_hotel_reservation": "To modify your reservation{ROOM_TYPE}{DATE}, please contact our Reservations Team.",
-    "add_night": "To extend your stay or add extra nights{ROOM_TYPE}{DATE}, please contact the Front Desk.",
-    "book_parking_space": "Parking can be reserved{DATE}. Additional charges may apply.",
+    "book_hotel": "Sure{PERSON}! I can help you book a room{LOCATION}{DATE}.",
+    "cancel_hotel_reservation": "I can help you cancel your booking{LOCATION}{DATE}.",
+    "change_hotel_reservation": "To modify your reservation{LOCATION}{DATE}, please contact our Reservations Team.",
+    "add_night": "To extend your stay or add extra nights{LOCATION}{DATE}, please contact the Front Desk.",
+    "book_parking_space": "Parking can be reserved{LOCATION}{DATE}. Additional charges may apply.",
     "ask_room_price": "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included.",
     "ask_wifi": "Yes, free Wi-Fi is available in all rooms and public areas.",
     "check_in": "Check-in starts at 3:00 PM. Early check-in subject to availability. Security deposit required.",
@@ -81,11 +81,11 @@ responses = {
 # 7. Define required slots for each intent
 # =====================================================
 intent_slots = {
-    "book_hotel": ["PERSON", "ROOM_TYPE", "DATE"],
-    "cancel_hotel_reservation": ["PERSON", "DATE"],
+    "book_hotel": ["ROOM_TYPE", "DATE"],
+    "cancel_hotel_reservation": ["DATE"],
     "change_hotel_reservation": ["DATE", "ROOM_TYPE"],
-    "add_night": ["DATE", "ROOM_TYPE", "ADDITIONAL_BED"],
-    "book_parking_space": ["DATE", "VEHICLE_TYPE"]
+    "add_night": ["DATE", "ROOM_TYPE"],
+    "book_parking_space": ["DATE"]
 }
 
 # =====================================================
@@ -94,13 +94,11 @@ intent_slots = {
 def fill_entities(template, entities):
     person = ", ".join(entities.get("PERSON", []))
     date = ", ".join(entities.get("DATE", []))
-    room_type = ", ".join(entities.get("ROOM_TYPE", []))
-    
+    location = ", ".join(entities.get("GPE", []))
     person = f" {person}" if person else ""
     date = f" for {date}" if date else ""
-    room_type = f" ({room_type})" if room_type else ""
-    
-    return template.format(PERSON=person, DATE=date, ROOM_TYPE=room_type)
+    location = f" in {location}" if location else ""
+    return template.format(PERSON=person, DATE=date, LOCATION=location)
 
 # =====================================================
 # 9. Intent Prediction
@@ -137,4 +135,66 @@ def predict_intent(user_input):
 # =====================================================
 def generate_response(user_input):
     if "pending_intent" not in st.session_state:
-        st.session_state.pending_inte
+        st.session_state.pending_intent = None
+    if "collected_info" not in st.session_state:
+        st.session_state.collected_info = {}
+
+    intent, confidence, response_time = predict_intent(user_input)
+    entities = extract_entities(user_input)
+
+    # --- Check if multi-turn in progress ---
+    if st.session_state.pending_intent:
+        current_intent = st.session_state.pending_intent
+        # 更新收集到的槽位
+        for slot in intent_slots.get(current_intent, []):
+            if entities.get(slot):
+                st.session_state.collected_info[slot] = entities[slot][0]
+        # 检查是否还缺槽位
+        missing = [slot for slot in intent_slots.get(current_intent, []) if slot not in st.session_state.collected_info]
+        if missing:
+            reply = f"Please provide the following information: {', '.join(missing)}."
+            return current_intent, reply, confidence, response_time
+        else:
+            reply = f"I have recorded your information: {st.session_state.collected_info}. Please proceed to the website or Front Desk to complete the operation."
+            st.session_state.pending_intent = None
+            st.session_state.collected_info = {}
+            return current_intent, reply, confidence, response_time
+
+    # --- New intent with required slots ---
+    if intent in intent_slots:
+        missing_entities = [slot for slot in intent_slots[intent] if not entities.get(slot)]
+        if missing_entities:
+            st.session_state.pending_intent = intent
+            # 保存已提供槽位
+            for slot in intent_slots[intent]:
+                if entities.get(slot):
+                    st.session_state.collected_info[slot] = entities[slot][0]
+            reply = f"Sure! I can help you with that. Please provide: {', '.join(missing_entities)}."
+            return intent, reply, confidence, response_time
+
+    # --- Single-turn reply ---
+    template = responses.get(intent, responses["unknown"])
+    reply = fill_entities(template, entities)
+    return intent, reply, confidence, response_time
+
+# =====================================================
+# 11. Streamlit UI
+# =====================================================
+st.set_page_config(page_title="Hotel AI Chatbot", layout="centered")
+st.title("Hotel Customer Support Chatbot")
+st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}]
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+user_input = st.chat_input("Type your message...")
+
+if user_input:
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    intent, reply, confidence, response_time = generate_response(user_input)
+    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.rerun()
