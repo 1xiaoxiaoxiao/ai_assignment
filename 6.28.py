@@ -1,5 +1,5 @@
 # =====================================================
-# Streamlit Hotel FAQ Chatbot (Chat API style)
+# Streamlit Hotel FAQ Chatbot
 # =====================================================
 
 import streamlit as st
@@ -150,6 +150,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
