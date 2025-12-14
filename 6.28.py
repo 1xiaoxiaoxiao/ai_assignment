@@ -102,7 +102,7 @@ def predict_intent(text):
         margin = scores[0][0]
 
     confidence = scipy.special.expit(margin) * 100 
-      confidence = round(confidence, 2)# 转成 0~100%
+    confidence = round(confidence, 2)# 转成 0~100%
 
     response = responses.get(intent, responses["unknown_intent"])
     elapsed_time = time.time() - start_time
@@ -150,6 +150,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
