@@ -1,8 +1,10 @@
 # =====================================================
-# Streamlit Hotel FAQ Chatbot (Chat API style)
+# Streamlit Hotel FAQ Chatbot (SVM + TF-IDF + spaCy NER)
+# Chat UI + Intent + High/Medium/Low Confidence + Response Time
 # =====================================================
 
 import streamlit as st
+import pandas as pd
 import spacy
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -13,58 +15,29 @@ import time
 import numpy as np
 
 # -----------------------------
-# 1️⃣ Load models & spaCy
+# Load models & spaCy
 # -----------------------------
 nlp = spacy.load("en_core_web_sm")
 clf = joblib.load("svm_faq_model.joblib")
 vectorizer = joblib.load("tfidf_vectorizer.joblib")
 
 # -----------------------------
-# 2️⃣ Responses dictionary (fixed answers)
+# Responses dictionary
 # -----------------------------
 responses = {
-    "greeting":                     "Welcome to Astra Imperium Hotel. I'm your virtual assistant. How may I assist you today?",
-    "check_functions":              "I can help with room reservations, hotel information, facilities, services, and general inquiries.",
-
-    "invoices":                     "To request an invoice, please visit the Front Desk or email us at billing@astraimperium.com. Provide your booking reference number for quicker processing.",
-    "cancellation_fees":            "Cancellations are free up to 24 hours before your check-in date. Cancellations within 24 hours, or no-shows, will incur a charge equivalent to the first night's stay.",
-    "check_in":                     "Check-in begins at 3:00 PM. Early check-in is subject to room availability. Luggage may be stored at the concierge at no additional cost. A refundable security deposit is required during check-in.",
-    "check_out":                    "Check-out time is 12:00 PM. Late check-out until 2:00 PM is available for RM50, depending on availability. Please return your key card to the Front Desk upon departure.",
-    "customer_service":             "For urgent assistance, please call the Front Desk at +60-3-5555-0199. For feedback and general inquiries, email us at support@astragroup.com.",
-    "human_agent":                  "To speak with a hotel representative, please contact the Front Desk at +60-3-5555-0199 or request a callback by leaving your name and phone number.",
-    "host_event":                   "To host an event, meeting, or private function at Astra Imperium, please email our Events Team at events@astragroup.com or call +60-3-5555-0200. Our coordinators will assist with venue selection, setup, and catering.",
-    "file_complaint":               "To file a complaint, please speak to the Duty Manager at the Front Desk or email quality@astragroup.com. We will respond within 24 hours.",
-    "leave_review":                 "You may leave a review on Google Maps, TripAdvisor, or our official website under the 'Guest Reviews' section. We appreciate your feedback.",
-    "book_hotel":                   "To make a reservation, visit www.astraimperium.com, call our Reservations Department at +60-3-5555-0199, or book in person at the Front Desk. A valid ID is required for all bookings.",
-    "cancel_hotel_reservation":     "To cancel your reservation, please contact our Reservations Team at +60-3-5555-0199 or email bookings@astragroup.com with your booking reference number.",
-    "change_hotel_reservation":     "To modify your reservation dates, room type, or guest details, please contact our Reservations Team at +60-3-5555-0199 or email bookings@astragroup.com.",
-    "check_hotel_facilities":       "Our facilities include an infinity pool, rooftop lounge, fitness centre, spa, business centre, event halls, all-day dining restaurant, and 24-hour concierge service.",
-    "check_hotel_offers":           "Current promotions and packages are listed on our website under the 'Offers' section. You may also call our Reservations Team for exclusive in-house deals.",
-    "check_hotel_prices":           "Room rates vary by date, room type, and availability. For the most accurate pricing, please check our website at www.astraimperium.com or call our Reservations Team.",
-    "check_hotel_reservation":      "To check your reservation status, please provide your booking reference number to the Front Desk or email bookings@astragroup.com.",
-    "search_hotel":                 "Astra Imperium Hotel is located at 18 Jalan Alor, Kuala Lumpur City Centre—just a 5-minute walk from LRT KLCC Station.",
-    "store_luggage":                "Complimentary luggage storage is available 24/7. You may store your bags before check-in or after check-out while exploring the city.",
-    "check_menu":                   "Our restaurant menu is available at the SkyDine Restaurant (Level 8). You may also view the digital menu through the QR code provided in your room or request a copy from the concierge.",
-    "add_night":                    "To extend your stay or add additional guests, please contact the Front Desk or call +60-3-5555-0199. Extensions are subject to room availability and rate adjustments.",
-    "book_parking_space":           "Parking can be reserved during booking or upon arrival, subject to availability. The rate is RM20 per day for in-house guests.",
-    "bring_pets":                   "Astra Imperium is pet-friendly. Dogs and cats under 10kg are allowed with a RM50 per-stay cleaning fee. Service animals are welcome at no charge. Pets are not permitted in dining or pool areas.",
-    "redeem_points":                "If you are an Astra Rewards member, you may redeem points for discounts or complimentary nights. Log in to your member account on our website or visit the Front Desk for assistance.",
-    "get_refund":                   "Refunds are processed within 7-14 business days, depending on your payment method. Please contact billing@astragroup.com with your booking reference number.",
-    "shuttle_service":              "We provide private airport transfers: RM80 for a sedan and RM120 for a van. Book at least 24 hours in advance via the Front Desk. E-hailing options are also easily available, averaging RM60-70 to KLIA.",
-
-    "check_room_type":              "Our room categories include Superior, Deluxe, Premier, Executive Suite, and the Astra Imperial Suite. Each offers different views and amenities to suit your stay.",
-    "check_room_availability":      "To check room availability, please visit our website's booking page or contact the Reservations Team with your preferred dates.",
-    "check_nearby_attractions":     "Nearby attractions include the Petronas Twin Towers (1 km), Pavilion Bukit Bintang, the National Museum, and Jalan Alor Street Food Market. Complimentary city maps are available at the concierge.",
-    "check_child_policy":           "Children under 12 stay for free using existing bedding. Baby cots and high chairs are available on request at no additional charge. Babysitting services are currently not offered.",
-    "check_smoking_policy":         "All guest rooms are non-smoking. A penalty of RM500 applies for violations. Smoking is permitted only in the designated outdoor area near the main lobby.",
-    "check_payment_methods":        "We accept cash (MYR), Visa, Mastercard, American Express, and major e-wallets such as GrabPay and Touch 'n Go. A refundable RM100 security deposit is required during check-in.",
-    "check_lost_item":              "For lost items, please report immediately to the Front Desk. Our Security Team will review the Lost & Found log and contact you once the item is located.",
-    "goodbye":                      "Thank you for choosing Astra Imperium Hotel. We look forward to welcoming you again soon!",
-    "unknown_intent":                "I'm sorry, I don't understand your question."
+    "greeting": "Welcome to Astra Imperium Hotel. I'm your virtual assistant. How may I assist you today?",
+    "check_functions": "I can help with room reservations, hotel information, facilities, services, and general inquiries.",
+    "invoices": "To request an invoice, please visit the Front Desk or email us at billing@astraimperium.com. Provide your booking reference number for quicker processing.",
+    "cancellation_fees": "Cancellations are free up to 24 hours before your check-in date. Cancellations within 24 hours, or no-shows, will incur a charge equivalent to the first night's stay.",
+    "check_in": "Check-in begins at 3:00 PM. Early check-in is subject to room availability. Luggage may be stored at the concierge at no additional cost. A refundable security deposit is required during check-in.",
+    "check_out": "Check-out time is 12:00 PM. Late check-out until 2:00 PM is available for RM50, depending on availability. Please return your key card to the Front Desk upon departure.",
+    "book_hotel": "To make a reservation, visit www.astraimperium.com, call our Reservations Department at +60-3-5555-0199, or book in person at the Front Desk. A valid ID is required for all bookings.",
+    "cancel_hotel_reservation": "To cancel your reservation, please contact our Reservations Team at +60-3-5555-0199 or email bookings@astragroup.com with your booking reference number.",
+    "unknown_intent": "I'm sorry, I don't understand your question."
 }
 
 # -----------------------------
-# 3️⃣ Preprocess text
+# Text preprocessing
 # -----------------------------
 def preprocess_text(text):
     text = text.lower()
@@ -72,7 +45,7 @@ def preprocess_text(text):
     return text
 
 # -----------------------------
-# 4️⃣ Extract entities using spaCy NER
+# Extract entities using spaCy NER
 # -----------------------------
 def extract_entities(text):
     doc = nlp(text)
@@ -82,27 +55,33 @@ def extract_entities(text):
     return entities
 
 # -----------------------------
-# 5️⃣ Predict intent & confidence
+# Predict intent and High/Medium/Low confidence
 # -----------------------------
 def predict_intent(text):
-    start_time = time.time()
     vec = vectorizer.transform([preprocess_text(text)])
     scores = clf.decision_function(vec)
     best_index = np.argmax(scores)
     intent = clf.classes_[best_index]
-    # Confidence as % from margin
+    
+    # Calculate margin
     if len(scores[0]) > 1:
         sorted_scores = np.sort(scores[0])[::-1]
         margin = sorted_scores[0] - sorted_scores[1]
-        confidence = min(max(margin / sorted_scores[0], 0), 1)
     else:
-        confidence = 1.0
-    response = responses.get(intent, responses["unknown_intent"])
-    elapsed_time = time.time() - start_time
-    return intent, response, confidence * 100, elapsed_time
+        margin = scores[0][0]
+    
+    # Convert margin to High/Medium/Low
+    if margin > 1.0:
+        confidence = "High"
+    elif margin > 0.5:
+        confidence = "Medium"
+    else:
+        confidence = "Low"
+    
+    return intent, confidence
 
 # -----------------------------
-# 6️⃣ Streamlit Chat UI
+# Streamlit Chat UI
 # -----------------------------
 st.set_page_config(page_title="Hotel FAQ Chatbot", layout="centered")
 st.title("Astra Imperium Hotel FAQ Chatbot")
@@ -111,33 +90,30 @@ st.caption("SVM + TF-IDF + spaCy NER (Fixed Responses)")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-def main():
-    user_input = st.chat_input("How can I help you?")
-    
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        
-        # Predict intent
-        intent_name, response, confidence_display, response_time = predict_intent(user_input)
-        
-        # Append assistant response
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": response,
-            "intent": intent_name,
-            "confidence": f"{confidence_display:.2f}%",
-            "time": f"{response_time:.3f}s"
-        })
-    
-    # Display chat history
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            with st.chat_message("user"):
-                st.markdown(msg["content"])
-        else:
-            with st.chat_message("assistant"):
-                st.caption(f"Intent: **{msg['intent']}** | Confidence: **{msg['confidence']}** | Time: **{msg['time']}**")
-                st.markdown(msg["content"])
+user_input = st.chat_input("You:")
 
-if __name__ == "__main__":
-    main()
+if user_input:
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    
+    start_time = time.time()
+    intent, confidence = predict_intent(user_input)
+    response = responses.get(intent, responses["unknown_intent"])
+    response_time = time.time() - start_time
+    
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": response,
+        "intent": intent,
+        "confidence": confidence,
+        "time": response_time
+    })
+
+# Display chat history
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        with st.chat_message("user"):
+            st.markdown(msg["content"])
+    else:
+        with st.chat_message("assistant"):
+            st.markdown(msg["content"])
+            st.caption(f"Intent: **{msg['intent']}** | Confidence: **{msg['confidence']}** | Time: **{msg['time']:.3f}s**")
