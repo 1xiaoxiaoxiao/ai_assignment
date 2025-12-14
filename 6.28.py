@@ -115,7 +115,7 @@ def predict_intent(text):
 # -----------------------------
 st.set_page_config(page_title="Hotel FAQ Chatbot", layout="centered")
 st.title("Astra Imperium Hotel FAQ Chatbot")
-st.caption("SVM + TF-IDF + spaCy NER (Fixed Responses)")
+st.caption("SVM + TF-IDF + spaCy NER ")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -150,6 +150,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
