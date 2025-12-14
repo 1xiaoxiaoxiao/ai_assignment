@@ -235,31 +235,10 @@ user_input = st.chat_input("Type your message...")
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     intent, reply, confidence, response_time = generate_response(user_input)
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+    
+    # 在聊天中显示回答 + 意图和置信度
+    display_reply = f"{reply}\n\n**Predicted Intent:** {intent} | **Confidence:** {confidence}"
+    st.session_state.messages.append({"role": "assistant", "content": display_reply})
     st.rerun()
 
-# =====================================================
-# 13. Evaluation Panel (Sidebar)
-# =====================================================
-st.sidebar.header("Chatbot Evaluation")
 
-if st.sidebar.button("Run Test Dataset"):
-    test_data = [
-        {"input": "I want to book a single room tomorrow", "true_intent": "book_hotel",
-         "true_response": "Sure! I can help you book a room for tomorrow."},
-        {"input": "Do you have free wifi?", "true_intent": "ask_wifi",
-         "true_response": "Yes, free Wi-Fi is available in all rooms and public areas."},
-        {"input": "What is the price of deluxe room?", "true_intent": "ask_room_price",
-         "true_response": "Our deluxe room costs RM180 per night. Breakfast and free Wi-Fi included."}
-    ]
-    acc, y_true, y_pred = evaluate_intent(test_data)
-    avg_bleu, _ = evaluate_response(test_data)
-    st.sidebar.write(f"Intent Recognition Accuracy: {acc:.2f}")
-    st.sidebar.write(f"Average BLEU Score: {avg_bleu:.2f}")
-
-if st.sidebar.checkbox("Collect Feedback for Last Response"):
-    if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-        collect_feedback(st.session_state.messages[-2]["content"], st.session_state.messages[-1]["content"])
-
-if st.sidebar.checkbox("Show Feedback Log"):
-    st.sidebar.write(st.session_state.evaluation_log)
