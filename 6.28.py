@@ -99,3 +99,4 @@ if user_input:
     entities = extract_entities(user_input)  # optional logging
     reply = responses.get(intent, responses["unknown_intent"])
     st.markdown(f"**Bot:** {reply}")
+
