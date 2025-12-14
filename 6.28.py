@@ -102,67 +102,6 @@ def predict_intent(user_input):
 # -------------------------
 # 8. Streamlit Chatbot
 # -------------------------
-def main():
-    st.set_page_config(page_title="Hotel AI Assistant (SVM + spaCy)", layout="centered")
-    st.title("🏨 Astra Imperium Hotel Chatbot (SVM + spaCy)")
-    st.caption(f"Confidence Threshold: {CONFIDENCE_THRESHOLD}")
+st.set_page_config(page_title="Hotel AI Chatbot", layout="centered") st.title("Hotel Customer Support Chatbot") st.caption("SVM Intent Classification + spaCy NER + Multi-turn Slot Filling") if "messages" not in st.session_state: st.session_state.messages = [{"role": "assistant", "content": responses["greeting"]}] # 展示历史消息 for msg in st.session_state.messages: with st.chat_message(msg["role"]): st.markdown(msg["content"], unsafe_allow_html=True) # 用户输入 user_input = st.chat_input("Type your message...") if user_input: st.session_state.messages.append({"role": "user", "content": user_input}) intent, reply, confidence, response_time = generate_response(user_input) # 显示小字意图和置信度在回答上方 intent_info = f"<sub>Predicted Intent: {intent} | Confidence: {confidence}</sub>" display_reply = f"{intent_info}\n\n{reply}" st.session_state.messages.append({"role": "assistant", "content": display_reply}) st.rerun()
 
-    # --- Initialize Chat History ---
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-        greeting = responses.get("greeting", "Hello! How can I assist you?")
-        st.session_state.messages.append({"role": "assistant", "content": greeting})
-
-    if "pending_input" not in st.session_state:
-        st.session_state.pending_input = None
-
-    # --- Display Chat History ---
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if message["role"] == "assistant" and "intent" in message:
-                st.caption(f"Intent: **{message['intent']}** | Confidence: **{message['confidence']}** | Time: **{message['time']:.4f}s**")
-            st.markdown(message["content"])
-
-    # --- Suggested Questions Buttons ---
-    if "random_intents" not in st.session_state:
-        st.session_state.random_intents = random.sample(SUGGESTED_INTENTS, min(4, len(SUGGESTED_INTENTS)))
-
-    current_intents = st.session_state.random_intents
-    if current_intents:
-        st.markdown("**Suggested Questions:**")
-        cols = st.columns(len(current_intents))
-        for i, intent_key in enumerate(current_intents):
-            prompt_instruction = PROMPT_MAPPING[intent_key]
-            with cols[i]:
-                if st.button(prompt_instruction, key=f"btn_{intent_key}", use_container_width=True):
-                    st.session_state.pending_input = prompt_instruction
-                    del st.session_state.random_intents
-                    st.rerun()
-
-    # --- Handle User Input ---
-    user_input = None
-    if st.session_state.pending_input:
-        user_input = st.session_state.pending_input
-        st.session_state.pending_input = None
-    else:
-        user_input = st.chat_input("How can I help you?")
-
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-
-    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-        current_user_input = st.session_state.messages[-1]["content"]
-        with st.spinner("Analyzing query..."):
-            intent_name, response, confidence_display, response_time = predict_intent(current_user_input)
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response,
-                "intent": intent_name,
-                "confidence": confidence_display,
-                "time": response_time
-            })
-            st.rerun()
-
-if __name__ == "__main__":
-    main()
 
