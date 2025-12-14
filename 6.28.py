@@ -14,14 +14,14 @@ import numpy as np
 import scipy.special
 
 # -----------------------------
-# 1️⃣ Load models & spaCy
+# 1️ Load models & spaCy
 # -----------------------------
 nlp = spacy.load("en_core_web_sm")
 clf = joblib.load("svm_faq_model.joblib")
 vectorizer = joblib.load("tfidf_vectorizer.joblib")
 
 # -----------------------------
-# 2️⃣ Responses dictionary (fixed answers)
+# 2️ Responses dictionary (fixed answers)
 # -----------------------------
 responses = {
     "greeting":                     "Welcome to Astra Imperium Hotel. I'm your virtual assistant. How may I assist you today?",
@@ -65,7 +65,7 @@ responses = {
 }
 
 # -----------------------------
-# 3️⃣ Preprocess text
+# 3️Preprocess text
 # -----------------------------
 def preprocess_text(text):
     text = text.lower()
@@ -73,7 +73,7 @@ def preprocess_text(text):
     return text
 
 # -----------------------------
-# 4️⃣ Extract entities using spaCy NER
+# 4️Extract entities using spaCy NER
 # -----------------------------
 def extract_entities(text):
     doc = nlp(text)
@@ -83,7 +83,7 @@ def extract_entities(text):
     return entities
 
 # -----------------------------
-# 5️⃣ Predict intent & confidence
+# 5️ Predict intent & confidence
 # -----------------------------
   
 
@@ -94,7 +94,7 @@ def predict_intent(text):
     best_index = np.argmax(scores)
     intent = clf.classes_[best_index]
 
-    # Sigmoid 转换 margin 为百分比
+    # Sigmoid convert margin to percentage
     if len(scores[0]) > 1:
         sorted_scores = np.sort(scores[0])[::-1]
         margin = sorted_scores[0] - sorted_scores[1]
@@ -102,7 +102,7 @@ def predict_intent(text):
         margin = scores[0][0]
 
     confidence = scipy.special.expit(margin) * 100 
-    confidence = round(confidence, 2)# 转成 0~100%
+    confidence = round(confidence, 2)# 
 
     response = responses.get(intent, responses["unknown_intent"])
     elapsed_time = time.time() - start_time
@@ -150,6 +150,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
